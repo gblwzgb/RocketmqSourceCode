@@ -29,6 +29,9 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+/**
+ * 一个管理MappedFile的队列
+ */
 public class MappedFileQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private static final InternalLogger LOG_ERROR = InternalLoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);
@@ -43,11 +46,19 @@ public class MappedFileQueue {
 
     private final AllocateMappedFileService allocateMappedFileService;
 
+    // 当前刷到哪了，指整个消息队列，不要和MappedFile.flushedPosition搞混了
     private long flushedWhere = 0;
     private long committedWhere = 0;
 
     private volatile long storeTimestamp = 0;
 
+    /**
+     * 构造方法
+     *
+     * @param storePath 存储路径, userHome/store/commitlog
+     * @param mappedFileSize 映射文件大小
+     * @param allocateMappedFileService 分配生成映射文件的服务
+     */
     public MappedFileQueue(final String storePath, int mappedFileSize,
         AllocateMappedFileService allocateMappedFileService) {
         this.storePath = storePath;
@@ -192,28 +203,35 @@ public class MappedFileQueue {
     }
 
     public MappedFile getLastMappedFile(final long startOffset, boolean needCreate) {
+        // 下一个文件名的offset
         long createOffset = -1;
+        // 获取队列中的最后一个MappedFile
         MappedFile mappedFileLast = getLastMappedFile();
 
         if (mappedFileLast == null) {
+            // todo：计算待创建的offset
             createOffset = startOffset - (startOffset % this.mappedFileSize);
         }
 
-        if (mappedFileLast != null && mappedFileLast.isFull()) {
+        if (mappedFileLast != null && mappedFileLast.isFull()) {  // 最后一个MappedFile不为null，且写满了
             createOffset = mappedFileLast.getFileFromOffset() + this.mappedFileSize;
         }
 
         if (createOffset != -1 && needCreate) {
+            // 下一个文件的路径，userHome/store/commitlog/0000000000[offset]
             String nextFilePath = this.storePath + File.separator + UtilAll.offset2FileName(createOffset);
+            // 下下个文件的路径
             String nextNextFilePath = this.storePath + File.separator
                 + UtilAll.offset2FileName(createOffset + this.mappedFileSize);
             MappedFile mappedFile = null;
 
+            // 有分配的服务则用服务，会创建两个MappedFile
             if (this.allocateMappedFileService != null) {
                 mappedFile = this.allocateMappedFileService.putRequestAndReturnMappedFile(nextFilePath,
                     nextNextFilePath, this.mappedFileSize);
             } else {
                 try {
+                    // 没有服务可用则直接new，这个时候只创建了一个MappedFile？
                     mappedFile = new MappedFile(nextFilePath, this.mappedFileSize);
                 } catch (IOException e) {
                     log.error("create mappedFile exception", e);
@@ -222,8 +240,10 @@ public class MappedFileQueue {
 
             if (mappedFile != null) {
                 if (this.mappedFiles.isEmpty()) {
+                    // 是队列中创建的第一个MappedFile，设置标志位
                     mappedFile.setFirstCreateInQueue(true);
                 }
+                // 添加到队尾
                 this.mappedFiles.add(mappedFile);
             }
 
@@ -237,11 +257,13 @@ public class MappedFileQueue {
         return getLastMappedFile(startOffset, true);
     }
 
+    // 获取队列中的最后一个MappedFile
     public MappedFile getLastMappedFile() {
         MappedFile mappedFileLast = null;
 
         while (!this.mappedFiles.isEmpty()) {
             try {
+                // 获取最后一个MappedFile
                 mappedFileLast = this.mappedFiles.get(this.mappedFiles.size() - 1);
                 break;
             } catch (IndexOutOfBoundsException e) {
@@ -424,12 +446,17 @@ public class MappedFileQueue {
 
     public boolean flush(final int flushLeastPages) {
         boolean result = true;
+        // 通过flush到哪了的记录，找出具体的MappedFile
         MappedFile mappedFile = this.findMappedFileByOffset(this.flushedWhere, this.flushedWhere == 0);
         if (mappedFile != null) {
             long tmpTimeStamp = mappedFile.getStoreTimestamp();
+            // flush，并返回获取flush以后的偏移量（MappedFile的偏移量）
             int offset = mappedFile.flush(flushLeastPages);
+            // 计算整个MappedFileQueue的flush偏移量
             long where = mappedFile.getFileFromOffset() + offset;
+            // 如果没变，说明没flush
             result = where == this.flushedWhere;
+            // 更新flush的结果
             this.flushedWhere = where;
             if (0 == flushLeastPages) {
                 this.storeTimestamp = tmpTimeStamp;
@@ -461,7 +488,9 @@ public class MappedFileQueue {
      */
     public MappedFile findMappedFileByOffset(final long offset, final boolean returnFirstOnNotFound) {
         try {
+            // 获取第一个MappedFile
             MappedFile firstMappedFile = this.getFirstMappedFile();
+            // 获取最后一个MappedFile
             MappedFile lastMappedFile = this.getLastMappedFile();
             if (firstMappedFile != null && lastMappedFile != null) {
                 if (offset < firstMappedFile.getFileFromOffset() || offset >= lastMappedFile.getFileFromOffset() + this.mappedFileSize) {
@@ -472,27 +501,32 @@ public class MappedFileQueue {
                         this.mappedFileSize,
                         this.mappedFiles.size());
                 } else {
+                    // 计算下标位置，也就是offset在哪个区间内。可以理解成(offset - firstMappedFile.getFileFromOffset()) / this.mappedFileSize
                     int index = (int) ((offset / this.mappedFileSize) - (firstMappedFile.getFileFromOffset() / this.mappedFileSize));
                     MappedFile targetFile = null;
                     try {
+                        // 通过list的下标，直接获取MappedFile
                         targetFile = this.mappedFiles.get(index);
                     } catch (Exception ignored) {
                     }
 
                     if (targetFile != null && offset >= targetFile.getFileFromOffset()
                         && offset < targetFile.getFileFromOffset() + this.mappedFileSize) {
+                        // 在[fileFromOffset, fileFromOffset + mappedFileSize]区间之间，返回
                         return targetFile;
                     }
 
                     for (MappedFile tmpMappedFile : this.mappedFiles) {
                         if (offset >= tmpMappedFile.getFileFromOffset()
                             && offset < tmpMappedFile.getFileFromOffset() + this.mappedFileSize) {
+                            // 全量遍历兜底？
                             return tmpMappedFile;
                         }
                     }
                 }
 
                 if (returnFirstOnNotFound) {
+                    // 没找到时，返回第一个MappedFile
                     return firstMappedFile;
                 }
             }
@@ -503,6 +537,7 @@ public class MappedFileQueue {
         return null;
     }
 
+    // 获取第一个MappedFile
     public MappedFile getFirstMappedFile() {
         MappedFile mappedFileFirst = null;
 

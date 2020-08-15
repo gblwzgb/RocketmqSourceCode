@@ -344,6 +344,7 @@ public class BrokerController {
                 }
             }, initialDelay, period, TimeUnit.MILLISECONDS);
 
+            /** 默认5秒持久化一次消费位点 */
             this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
                 @Override
                 public void run() {
@@ -355,6 +356,7 @@ public class BrokerController {
                 }
             }, 1000 * 10, this.brokerConfig.getFlushConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
 
+            // 10秒持久化一次consumer的过滤器
             this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
                 @Override
                 public void run() {
@@ -798,6 +800,7 @@ public class BrokerController {
             this.brokerOuterAPI.shutdown();
         }
 
+        // 关闭的时候持久化一次
         this.consumerOffsetManager.persist();
 
         if (this.filterServerManager != null) {

@@ -87,9 +87,12 @@ public class UtilAll {
         return sb.toString();
     }
 
+    // 00000000000000[offset]，20位数字
     public static String offset2FileName(final long offset) {
         final NumberFormat nf = NumberFormat.getInstance();
+        // 设置最小位数
         nf.setMinimumIntegerDigits(20);
+        // 不足之处用0补齐
         nf.setMaximumFractionDigits(0);
         nf.setGroupingUsed(false);
         return nf.format(offset);

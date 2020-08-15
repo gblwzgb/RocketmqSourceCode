@@ -121,12 +121,15 @@ public abstract class ServiceThread implements Runnable {
     }
 
     public void wakeup() {
+        // 和LockSupport的unpark类似，设置一个通知，这样一进入waitForRunning就会获取到通知，就不会进入阻塞了
         if (hasNotified.compareAndSet(false, true)) {
             waitPoint.countDown(); // notify
         }
     }
 
     protected void waitForRunning(long interval) {
+        // 如果hasNotified是true，则表示已经被通知了，不阻塞了，直接返回。
+        // 这个其实和LockSupport.park()思路类似
         if (hasNotified.compareAndSet(true, false)) {
             this.onWaitEnd();
             return;

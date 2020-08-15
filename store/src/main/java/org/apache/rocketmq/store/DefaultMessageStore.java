@@ -571,15 +571,20 @@ public class DefaultMessageStore implements MessageStore {
 
         final long maxOffsetPy = this.commitLog.getMaxOffset();
 
+        // 根据topic、queueId获取ConsumeQueue
         ConsumeQueue consumeQueue = findConsumeQueue(topic, queueId);
         if (consumeQueue != null) {
+            // 队列中的最小偏移量
             minOffset = consumeQueue.getMinOffsetInQueue();
+            // 队列中的最大偏移量
             maxOffset = consumeQueue.getMaxOffsetInQueue();
 
             if (maxOffset == 0) {
+                // 队列中没有消息
                 status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
                 nextBeginOffset = nextOffsetCorrection(offset, 0);
             } else if (offset < minOffset) {
+                //
                 status = GetMessageStatus.OFFSET_TOO_SMALL;
                 nextBeginOffset = nextOffsetCorrection(offset, minOffset);
             } else if (offset == maxOffset) {
@@ -695,6 +700,7 @@ public class DefaultMessageStore implements MessageStore {
                 }
             }
         } else {
+            // 没有匹配到相应的逻辑队列
             status = GetMessageStatus.NO_MATCHED_LOGIC_QUEUE;
             nextBeginOffset = nextOffsetCorrection(offset, 0);
         }
@@ -1191,8 +1197,10 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     public ConsumeQueue findConsumeQueue(String topic, int queueId) {
+        // 从缓存中获取
         ConcurrentMap<Integer, ConsumeQueue> map = consumeQueueTable.get(topic);
         if (null == map) {
+            // 初始化（新老值对比，防止并发put）
             ConcurrentMap<Integer, ConsumeQueue> newMap = new ConcurrentHashMap<Integer, ConsumeQueue>(128);
             ConcurrentMap<Integer, ConsumeQueue> oldMap = consumeQueueTable.putIfAbsent(topic, newMap);
             if (oldMap != null) {
@@ -1202,8 +1210,10 @@ public class DefaultMessageStore implements MessageStore {
             }
         }
 
+        // 获取逻辑队列
         ConsumeQueue logic = map.get(queueId);
         if (null == logic) {
+            // 初始化（新老值对比，防止并发put）
             ConsumeQueue newLogic = new ConsumeQueue(
                 topic,
                 queueId,

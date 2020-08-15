@@ -190,16 +190,20 @@ public abstract class NettyRemotingAbstract {
      * @param cmd request command.
      */
     public void processRequestCommand(final ChannelHandlerContext ctx, final RemotingCommand cmd) {
+        // 根据请求的code，获取相应的Processor
+        // 详细的映射，看BrokerController.registerProcessor
         final Pair<NettyRequestProcessor, ExecutorService> matched = this.processorTable.get(cmd.getCode());
         final Pair<NettyRequestProcessor, ExecutorService> pair = null == matched ? this.defaultRequestProcessor : matched;
         final int opaque = cmd.getOpaque();
 
         if (pair != null) {
+            // 包成一个任务
             Runnable run = new Runnable() {
                 @Override
                 public void run() {
                     try {
                         doBeforeRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd);
+                        // 创建一个回调，用于请求处理完成后执行
                         final RemotingResponseCallback callback = new RemotingResponseCallback() {
                             @Override
                             public void callback(RemotingCommand response) {
@@ -222,9 +226,11 @@ public abstract class NettyRemotingAbstract {
                         };
                         if (pair.getObject1() instanceof AsyncNettyRequestProcessor) {
                             AsyncNettyRequestProcessor processor = (AsyncNettyRequestProcessor)pair.getObject1();
+                            // 异步处理请求，请求后通过callback通过客户端（异步里面转异步）
                             processor.asyncProcessRequest(ctx, cmd, callback);
                         } else {
                             NettyRequestProcessor processor = pair.getObject1();
+                            // 同步处理请求
                             RemotingCommand response = processor.processRequest(ctx, cmd);
                             doAfterRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd, response);
                             callback.callback(response);
@@ -252,9 +258,12 @@ public abstract class NettyRemotingAbstract {
             }
 
             try {
+                // 后面两个参数好像是用于快速失败清理用的
                 final RequestTask requestTask = new RequestTask(run, ctx.channel(), cmd);
+                // 提交到线程池里执行
                 pair.getObject2().submit(requestTask);
             } catch (RejectedExecutionException e) {
+                // 线程池满了
                 if ((System.currentTimeMillis() % 10000) == 0) {
                     log.warn(RemotingHelper.parseChannelRemoteAddr(ctx.channel())
                         + ", too many requests and system thread pool busy, RejectedExecutionException "
@@ -262,6 +271,7 @@ public abstract class NettyRemotingAbstract {
                         + " request code: " + cmd.getCode());
                 }
 
+                // 返回一个系统繁忙的错误给客户端
                 if (!cmd.isOnewayRPC()) {
                     final RemotingCommand response = RemotingCommand.createResponseCommand(RemotingSysResponseCode.SYSTEM_BUSY,
                         "[OVERLOAD]system busy, start flow control for a while");

@@ -41,24 +41,37 @@ import org.apache.rocketmq.store.config.FlushDiskType;
 import org.apache.rocketmq.store.util.LibC;
 import sun.nio.ch.DirectBuffer;
 
+/*
+ * 内存和文件的映射
+ * 对应一个持久化文件
+ */
 public class MappedFile extends ReferenceResource {
+    // 4k
     public static final int OS_PAGE_SIZE = 1024 * 4;
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    // 总映射的虚拟内存大小
     private static final AtomicLong TOTAL_MAPPED_VIRTUAL_MEMORY = new AtomicLong(0);
 
+    // 总的映射文件数量
     private static final AtomicInteger TOTAL_MAPPED_FILES = new AtomicInteger(0);
+    // 文件大小 == 已写到的pos，代表写满了
     protected final AtomicInteger wrotePosition = new AtomicInteger(0);
+    // 应该和writeBuffer是配套的，默认不会使用吧
     protected final AtomicInteger committedPosition = new AtomicInteger(0);
+    // 当前MappedFile文件的flushed到哪了
     private final AtomicInteger flushedPosition = new AtomicInteger(0);
     protected int fileSize;
     protected FileChannel fileChannel;
     /**
      * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
+     * （译：消息将首先放在此处，然后在writeBuffer不为null时reput到FileChannel。）
      */
+    // 这个默认不会使用
     protected ByteBuffer writeBuffer = null;
     protected TransientStorePool transientStorePool = null;
     private String fileName;
+    // 文件名后面的offset
     private long fileFromOffset;
     private File file;
     private MappedByteBuffer mappedByteBuffer;
@@ -144,6 +157,7 @@ public class MappedFile extends ReferenceResource {
     public void init(final String fileName, final int fileSize,
         final TransientStorePool transientStorePool) throws IOException {
         init(fileName, fileSize);
+        // 默认不使用TransientStorePool，所以TransientStorePool不会init，这里会返回null
         this.writeBuffer = transientStorePool.borrowBuffer();
         this.transientStorePool = transientStorePool;
     }
@@ -152,15 +166,20 @@ public class MappedFile extends ReferenceResource {
         this.fileName = fileName;
         this.fileSize = fileSize;
         this.file = new File(fileName);
+        // 文件名为0000000....[offset]，转成Long，就取出第一个offset了
         this.fileFromOffset = Long.parseLong(this.file.getName());
         boolean ok = false;
 
         ensureDirOK(this.file.getParent());
 
         try {
+            // 可读可写模式
             this.fileChannel = new RandomAccessFile(this.file, "rw").getChannel();
+            /** 开启映射 */
             this.mappedByteBuffer = this.fileChannel.map(MapMode.READ_WRITE, 0, fileSize);
+            // 总映射大小
             TOTAL_MAPPED_VIRTUAL_MEMORY.addAndGet(fileSize);
+            // 总映射数量
             TOTAL_MAPPED_FILES.incrementAndGet();
             ok = true;
         } catch (FileNotFoundException e) {
@@ -200,13 +219,19 @@ public class MappedFile extends ReferenceResource {
         assert messageExt != null;
         assert cb != null;
 
+        // 获取当前MappedFile的写入位点
         int currentPos = this.wrotePosition.get();
 
+        // 防溢出
         if (currentPos < this.fileSize) {
+            // todo ： 前者是什么，后者是虚拟内存的一个映射。
+            // slice出来，只是逻辑切片，物理上还是同一个，类似List的subList。便于维护自己的pos、limit等
             ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();
+            // 设置写入点
             byteBuffer.position(currentPos);
             AppendMessageResult result;
             if (messageExt instanceof MessageExtBrokerInner) {
+                // 为啥通过回调，来追加？
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos, (MessageExtBrokerInner) messageExt);
             } else if (messageExt instanceof MessageExtBatch) {
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos, (MessageExtBatch) messageExt);
@@ -217,6 +242,7 @@ public class MappedFile extends ReferenceResource {
             this.storeTimestamp = result.getStoreTimestamp();
             return result;
         }
+        // 走到这里说明出现了异常情况，溢出了。
         log.error("MappedFile.appendMessage return null, wrotePosition: {} fileSize: {}", currentPos, this.fileSize);
         return new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
     }
@@ -269,21 +295,27 @@ public class MappedFile extends ReferenceResource {
      * @return The current flushed position
      */
     public int flush(final int flushLeastPages) {
+        // 判断有没有到flush的条件
         if (this.isAbleToFlush(flushLeastPages)) {
-            if (this.hold()) {
+            if (this.hold()) {  // todo：这个不是很懂，像锁又不想锁
                 int value = getReadPosition();
 
                 try {
                     //We only append data to fileChannel or mappedByteBuffer, never both.
+                    // （译：我们仅将数据附加到fileChannel或maptedByteBuffer，而不会两者都附加。）
                     if (writeBuffer != null || this.fileChannel.position() != 0) {
                         this.fileChannel.force(false);
                     } else {
+                        // 默认走这里
                         this.mappedByteBuffer.force();
                     }
                 } catch (Throwable e) {
                     log.error("Error occurred when force data to disk.", e);
                 }
 
+                // todo：这里getReadPosition出来后，其他线程还在写，然后多force了一些？
+
+                // 全flush进去了，设置flushed的点位为
                 this.flushedPosition.set(value);
                 this.release();
             } else {
@@ -336,14 +368,19 @@ public class MappedFile extends ReferenceResource {
     }
 
     private boolean isAbleToFlush(final int flushLeastPages) {
+        // 目前刷新到的位点
         int flush = this.flushedPosition.get();
+        // 目前写到的位点
         int write = getReadPosition();
 
         if (this.isFull()) {
+            // 如果满了，可以flush
             return true;
         }
 
         if (flushLeastPages > 0) {
+            // （总共应flush的页数 - 已flush的页面）>= 最少要刷新的页面
+            // 默认flushLeastPages为4，也就是说write要比flush快 4 * 4k = 16k的数据才会flush
             return ((write / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE)) >= flushLeastPages;
         }
 
@@ -374,6 +411,7 @@ public class MappedFile extends ReferenceResource {
     }
 
     public boolean isFull() {
+        // 文件大小 == 已写到的pos，代表写满了
         return this.fileSize == this.wrotePosition.get();
     }
 
@@ -399,13 +437,18 @@ public class MappedFile extends ReferenceResource {
     }
 
     public SelectMappedBufferResult selectMappedBuffer(int pos) {
+        // 获取读到的最大pos
         int readPosition = getReadPosition();
         if (pos < readPosition && pos >= 0) {
             if (this.hold()) {
+                // 逻辑切分
                 ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
+                // 定位到这个位置
                 byteBuffer.position(pos);
+                // 剩余可读大小
                 int size = readPosition - pos;
                 ByteBuffer byteBufferNew = byteBuffer.slice();
+                // 限制
                 byteBufferNew.limit(size);
                 return new SelectMappedBufferResult(this.fileFromOffset + pos, byteBufferNew, size, this);
             }

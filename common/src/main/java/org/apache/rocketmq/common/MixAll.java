@@ -150,19 +150,26 @@ public class MixAll {
 
     public static void string2File(final String str, final String fileName) throws IOException {
 
+        // 临时文件
         String tmpFile = fileName + ".tmp";
+        // 先写入.tmp临时文件（不安全）
         string2FileNotSafe(str, tmpFile);
 
+        // 备份文件
         String bakFile = fileName + ".bak";
+        // 尝试读取已经存在的文件内容
         String prevContent = file2String(fileName);
         if (prevContent != null) {
+            // 将之前文件的内容，写入.bak文件中
             string2FileNotSafe(prevContent, bakFile);
         }
 
         File file = new File(fileName);
+        // 删除老文件  todo：这里删了以后，应该会有一个地方来防止宕机
         file.delete();
 
         file = new File(tmpFile);
+        // 将tmp文件重命名
         file.renameTo(new File(fileName));
     }
 

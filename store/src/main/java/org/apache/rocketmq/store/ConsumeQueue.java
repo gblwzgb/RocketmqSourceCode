@@ -44,6 +44,15 @@ public class ConsumeQueue {
     private volatile long minLogicOffset = 0;
     private ConsumeQueueExt consumeQueueExt = null;
 
+    /**
+     * 构造方法
+     *
+     * @param topic topic
+     * @param queueId 队列id
+     * @param storePath  存储路径：rootDir/consumequeue
+     * @param mappedFileSize 映射文件大小
+     * @param defaultMessageStore DefaultMessageStore
+     */
     public ConsumeQueue(
         final String topic,
         final int queueId,
@@ -57,6 +66,7 @@ public class ConsumeQueue {
         this.topic = topic;
         this.queueId = queueId;
 
+        // 查询目录：rootDir/consumequeue/topic/queueId
         String queueDir = this.storePath
             + File.separator + topic
             + File.separator + queueId;
@@ -65,7 +75,7 @@ public class ConsumeQueue {
 
         this.byteBufferIndex = ByteBuffer.allocate(CQ_STORE_UNIT_SIZE);
 
-        if (defaultMessageStore.getMessageStoreConfig().isEnableConsumeQueueExt()) {
+        if (defaultMessageStore.getMessageStoreConfig().isEnableConsumeQueueExt()) {  // 默认false
             this.consumeQueueExt = new ConsumeQueueExt(
                 topic,
                 queueId,
@@ -492,8 +502,10 @@ public class ConsumeQueue {
         int mappedFileSize = this.mappedFileSize;
         long offset = startIndex * CQ_STORE_UNIT_SIZE;
         if (offset >= this.getMinLogicOffset()) {
+            // 判断offset在哪个MappedFile上
             MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset);
             if (mappedFile != null) {
+                // 通过取模，算出offset在哪个pos
                 SelectMappedBufferResult result = mappedFile.selectMappedBuffer((int) (offset % mappedFileSize));
                 return result;
             }

@@ -68,10 +68,13 @@ public abstract class ConfigManager {
     public abstract void decode(final String jsonString);
 
     public synchronized void persist() {
+        // 子类决定持久化的内容
         String jsonString = this.encode(true);
         if (jsonString != null) {
+            // 子类决定文件的名称
             String fileName = this.configFilePath();
             try {
+                // 写文件
                 MixAll.string2File(jsonString, fileName);
             } catch (IOException e) {
                 log.error("persist file " + fileName + " exception", e);
