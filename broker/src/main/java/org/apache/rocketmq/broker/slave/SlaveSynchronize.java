@@ -28,6 +28,12 @@ import org.apache.rocketmq.common.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.common.protocol.body.TopicConfigSerializeWrapper;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
 
+/**
+ * 用于同步M-S之间的一些配置类的信息，消息同步还是靠HAService
+ *
+ * BrokerController启动的时候，判断本机是slave的时候，会每10s执行一次syncAll()，从master拉一些配置信息。
+ * 底层通过netty。
+ */
 public class SlaveSynchronize {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private final BrokerController brokerController;
@@ -46,9 +52,13 @@ public class SlaveSynchronize {
     }
 
     public void syncAll() {
+        // 同步topic配置信息
         this.syncTopicConfig();
+        // 同步消费者消费进度
         this.syncConsumerOffset();
+        //
         this.syncDelayOffset();
+        // 同步订阅配置
         this.syncSubscriptionGroupConfig();
     }
 

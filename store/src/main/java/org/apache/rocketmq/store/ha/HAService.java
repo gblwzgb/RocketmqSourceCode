@@ -40,13 +40,17 @@ import org.apache.rocketmq.remoting.common.RemotingUtil;
 import org.apache.rocketmq.store.CommitLog;
 import org.apache.rocketmq.store.DefaultMessageStore;
 
+// 高可用服务，用于M-S之间的数据同步
+// 自己通过NIO实现的，没通过netty。
 public class HAService {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
     private final AtomicInteger connectionCount = new AtomicInteger(0);
 
+    // Master收到的，来自Slave的连接
     private final List<HAConnection> connectionList = new LinkedList<>();
 
+    // Master用于接收Slave连接请求的
     private final AcceptSocketService acceptSocketService;
 
     private final DefaultMessageStore defaultMessageStore;
@@ -54,12 +58,15 @@ public class HAService {
     private final WaitNotifyObject waitNotifyObject = new WaitNotifyObject();
     private final AtomicLong push2SlaveMaxOffset = new AtomicLong(0);
 
+    // 同步刷盘模式下，会使用这个把消息转给Slave，默认异步
     private final GroupTransferService groupTransferService;
 
+    // Slave使用，但是我看Master好像也会启动这个呀
     private final HAClient haClient;
 
     public HAService(final DefaultMessageStore defaultMessageStore) throws IOException {
         this.defaultMessageStore = defaultMessageStore;
+        // 默认端口：10912
         this.acceptSocketService =
             new AcceptSocketService(defaultMessageStore.getMessageStoreConfig().getHaListenPort());
         this.groupTransferService = new GroupTransferService();
@@ -106,6 +113,7 @@ public class HAService {
     // }
 
     public void start() throws Exception {
+        // 绑定到指定端口上，开始监听
         this.acceptSocketService.beginAccept();
         this.acceptSocketService.start();
         this.groupTransferService.start();
@@ -202,12 +210,14 @@ public class HAService {
 
             while (!this.isStopped()) {
                 try {
+                    // select
                     this.selector.select(1000);
                     Set<SelectionKey> selected = this.selector.selectedKeys();
 
                     if (selected != null) {
                         for (SelectionKey k : selected) {
                             if ((k.readyOps() & SelectionKey.OP_ACCEPT) != 0) {
+                                // 获取连接请求
                                 SocketChannel sc = ((ServerSocketChannel) k.channel()).accept();
 
                                 if (sc != null) {
@@ -250,6 +260,7 @@ public class HAService {
     /**
      * GroupTransferService Service
      */
+    // 这个类的设计思路和GroupCommitService基本类似
     class GroupTransferService extends ServiceThread {
 
         private final WaitNotifyObject notifyTransferObject = new WaitNotifyObject();
@@ -335,6 +346,7 @@ public class HAService {
 
         private long currentReportedOffset = 0;
         private int dispatchPosition = 0;
+        // 最大4M
         private ByteBuffer byteBufferRead = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);
         private ByteBuffer byteBufferBackup = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);
 
@@ -407,8 +419,9 @@ public class HAService {
             int readSizeZeroTimes = 0;
             while (this.byteBufferRead.hasRemaining()) {
                 try {
+                    // 读取到byteBufferRead中
                     int readSize = this.socketChannel.read(this.byteBufferRead);
-                    if (readSize > 0) {
+                    if (readSize > 0) {  // 读到的大小
                         readSizeZeroTimes = 0;
                         boolean result = this.dispatchReadRequest();
                         if (!result) {
@@ -417,6 +430,7 @@ public class HAService {
                         }
                     } else if (readSize == 0) {
                         if (++readSizeZeroTimes >= 3) {
+                            // 第三次没读到了
                             break;
                         }
                     } else {
@@ -457,6 +471,7 @@ public class HAService {
                         this.byteBufferRead.position(this.dispatchPosition + msgHeaderSize);
                         this.byteBufferRead.get(bodyData);
 
+                        // 附加到CommitLog中，并reput
                         HAService.this.defaultMessageStore.appendToCommitLog(masterPhyOffset, bodyData);
 
                         this.byteBufferRead.position(readSocketPos);
@@ -495,6 +510,7 @@ public class HAService {
             return result;
         }
 
+        // 连接到Master
         private boolean connectMaster() throws ClosedChannelException {
             if (null == socketChannel) {
                 String addr = this.masterAddress.get();
@@ -502,8 +518,10 @@ public class HAService {
 
                     SocketAddress socketAddress = RemotingUtil.string2SocketAddress(addr);
                     if (socketAddress != null) {
+                        // 通过NIO连接到Master
                         this.socketChannel = RemotingUtil.connect(socketAddress);
                         if (this.socketChannel != null) {
+                            // 注册读事件
                             this.socketChannel.register(this.selector, SelectionKey.OP_READ);
                         }
                     }
@@ -550,19 +568,24 @@ public class HAService {
 
             while (!this.isStopped()) {
                 try {
-                    if (this.connectMaster()) {
+                    if (this.connectMaster()) {  // 连接Master，成功后，进入if
 
+                        // 上报的间隔时间不能短于5秒
                         if (this.isTimeToReportOffset()) {
+                            // 给Master上报Slave的最大offset
                             boolean result = this.reportSlaveMaxOffset(this.currentReportedOffset);
                             if (!result) {
                                 this.closeMaster();
                             }
                         }
 
+                        // 在connectMaster()中设置了关心可读
                         this.selector.select(1000);
 
+                        /** 处理Master发过来的消息 */
                         boolean ok = this.processReadEvent();
                         if (!ok) {
+                            // 处理不ok，关闭连接
                             this.closeMaster();
                         }
 

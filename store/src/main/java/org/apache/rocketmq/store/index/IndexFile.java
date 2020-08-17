@@ -27,12 +27,25 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.MappedFile;
 
+/**
+ * 使用时间作为文件名：20200817125026999
+ *
+ *
+ * 文件由三部分组成
+ * IndexHeader + Hash槽 + Hash 条目
+ * 40字节 + （500w*4） + 2000w*20
+ *
+ *
+ * 只有在IndexFile满的时候，会新创建一个线程去flush
+ */
 public class IndexFile {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private static int hashSlotSize = 4;
     private static int indexSize = 20;
     private static int invalidIndex = 0;
+    // 500万
     private final int hashSlotNum;
+    // 2千万
     private final int indexNum;
     private final MappedFile mappedFile;
     private final FileChannel fileChannel;
@@ -90,9 +103,12 @@ public class IndexFile {
     }
 
     public boolean putKey(final String key, final long phyOffset, final long storeTimestamp) {
-        if (this.indexHeader.getIndexCount() < this.indexNum) {
+        if (this.indexHeader.getIndexCount() < this.indexNum) {  // 判断索引数量有没有满
+            // 获取key的hashcode，为负时会转成正的
             int keyHash = indexKeyHashMethod(key);
+            // 计算槽位，共500w个槽位
             int slotPos = keyHash % this.hashSlotNum;
+            // 槽位的绝对位置
             int absSlotPos = IndexHeader.INDEX_HEADER_SIZE + slotPos * hashSlotSize;
 
             FileLock fileLock = null;
@@ -101,11 +117,13 @@ public class IndexFile {
 
                 // fileLock = this.fileChannel.lock(absSlotPos, hashSlotSize,
                 // false);
+                // 获取这个槽位的值，值记录的是第几个索引条目
                 int slotValue = this.mappedByteBuffer.getInt(absSlotPos);
                 if (slotValue <= invalidIndex || slotValue > this.indexHeader.getIndexCount()) {
                     slotValue = invalidIndex;
                 }
 
+                // 落地时间和起始时间的差别
                 long timeDiff = storeTimestamp - this.indexHeader.getBeginTimestamp();
 
                 timeDiff = timeDiff / 1000;
@@ -118,25 +136,39 @@ public class IndexFile {
                     timeDiff = 0;
                 }
 
+                // 索引条目的绝对位置
                 int absIndexPos =
                     IndexHeader.INDEX_HEADER_SIZE + this.hashSlotNum * hashSlotSize
                         + this.indexHeader.getIndexCount() * indexSize;
 
+                // 下面4行保存索引条目，共20字节
+
+                // 4字节存hashCode
                 this.mappedByteBuffer.putInt(absIndexPos, keyHash);
+                // 8字节存phyOffset
                 this.mappedByteBuffer.putLong(absIndexPos + 4, phyOffset);
+                // 4节点存落地时间和起始时间的差别
                 this.mappedByteBuffer.putInt(absIndexPos + 4 + 8, (int) timeDiff);
+                // 记录前一个，相当于prev
                 this.mappedByteBuffer.putInt(absIndexPos + 4 + 8 + 4, slotValue);
 
+                // 更新槽位的索引条目是第几条。
                 this.mappedByteBuffer.putInt(absSlotPos, this.indexHeader.getIndexCount());
 
                 if (this.indexHeader.getIndexCount() <= 1) {
+                    // 如果是刚开始，则记录开始的物理offset
                     this.indexHeader.setBeginPhyOffset(phyOffset);
+                    // 记录开始的存储时间戳
                     this.indexHeader.setBeginTimestamp(storeTimestamp);
                 }
 
+                // 计数hash槽位的数量
                 this.indexHeader.incHashSlotCount();
+                // 新增索引数量
                 this.indexHeader.incIndexCount();
+                // 设置最后存储的物理offset
                 this.indexHeader.setEndPhyOffset(phyOffset);
+                // 设置最后存储的时间戳
                 this.indexHeader.setEndTimestamp(storeTimestamp);
 
                 return true;
@@ -159,6 +191,7 @@ public class IndexFile {
         return false;
     }
 
+    // 获取key的hash值，返回正数
     public int indexKeyHashMethod(final String key) {
         int keyHash = key.hashCode();
         int keyHashPositive = Math.abs(keyHash);
@@ -186,6 +219,7 @@ public class IndexFile {
         return result;
     }
 
+    // 根据key查询IndexFile的索引位置。
     public void selectPhyOffset(final List<Long> phyOffsets, final String key, final int maxNum,
         final long begin, final long end, boolean lock) {
         if (this.mappedFile.hold()) {

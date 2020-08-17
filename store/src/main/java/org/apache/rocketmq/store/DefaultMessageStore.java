@@ -88,6 +88,7 @@ public class DefaultMessageStore implements MessageStore {
 
     private final AllocateMappedFileService allocateMappedFileService;
 
+    // 将CommitLog，投递到ConsumerQueue、Index中
     private final ReputMessageService reputMessageService;
 
     // 高可用服务
@@ -143,7 +144,7 @@ public class DefaultMessageStore implements MessageStore {
         this.cleanConsumeQueueService = new CleanConsumeQueueService();
         this.storeStatsService = new StoreStatsService();
         this.indexService = new IndexService(this);
-        if (!messageStoreConfig.isEnableDLegerCommitLog()) {
+        if (!messageStoreConfig.isEnableDLegerCommitLog()) {  // 未使用DLeger时，则使用HAService
             this.haService = new HAService(this);
         } else {
             this.haService = null;
@@ -949,6 +950,7 @@ public class DefaultMessageStore implements MessageStore {
 
         boolean result = this.commitLog.appendData(startOffset, data);
         if (result) {
+            // 唤醒Reput服务，让其将CommitLog分发到ConsumeQueue、Index中。
             this.reputMessageService.wakeup();
         } else {
             log.error("appendToPhyQueue failed " + startOffset + " " + data.length);
@@ -1601,7 +1603,8 @@ public class DefaultMessageStore implements MessageStore {
 
         @Override
         public void dispatch(DispatchRequest request) {
-            if (DefaultMessageStore.this.messageStoreConfig.isMessageIndexEnable()) {
+            if (DefaultMessageStore.this.messageStoreConfig.isMessageIndexEnable()) {  // 默认true
+                // 构建索引
                 DefaultMessageStore.this.indexService.buildIndex(request);
             }
         }

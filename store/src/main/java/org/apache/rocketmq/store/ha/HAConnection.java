@@ -28,14 +28,23 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.common.RemotingUtil;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
 
+/**
+ * 内部分成读写线程，分开处理读写请求
+ */
 public class HAConnection {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
+    // 高可用服务的引用
     private final HAService haService;
+    // 与客户端的SocketChannel，通信用
     private final SocketChannel socketChannel;
+    // 客户端的地址，也就是Slave
     private final String clientAddr;
+    // 写线程
     private WriteSocketService writeSocketService;
+    // 读线程
     private ReadSocketService readSocketService;
 
+    // Slave请求要拉去的位点
     private volatile long slaveRequestOffset = -1;
     private volatile long slaveAckOffset = -1;
 
@@ -50,6 +59,7 @@ public class HAConnection {
         this.socketChannel.socket().setSendBufferSize(1024 * 64);
         this.writeSocketService = new WriteSocketService(this.socketChannel);
         this.readSocketService = new ReadSocketService(this.socketChannel);
+        // 连接数+1
         this.haService.getConnectionCount().incrementAndGet();
     }
 
@@ -97,8 +107,10 @@ public class HAConnection {
         public void run() {
             HAConnection.log.info(this.getServiceName() + " service started");
 
+            // 死循环
             while (!this.isStopped()) {
                 try {
+                    // ReadSocketService中设置了，关心读事件
                     this.selector.select(1000);
                     boolean ok = this.processReadEvent();
                     if (!ok) {
@@ -214,6 +226,7 @@ public class HAConnection {
 
             while (!this.isStopped()) {
                 try {
+                    // WriteSocketService中设置了，关心可写事件
                     this.selector.select(1000);
 
                     if (-1 == HAConnection.this.slaveRequestOffset) {
@@ -223,7 +236,9 @@ public class HAConnection {
 
                     if (-1 == this.nextTransferFromWhere) {
                         if (0 == HAConnection.this.slaveRequestOffset) {
+                            // 从CommitLog中获取最大offset
                             long masterOffset = HAConnection.this.haService.getDefaultMessageStore().getCommitLog().getMaxOffset();
+                            // todo：
                             masterOffset =
                                 masterOffset
                                     - (masterOffset % HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig()
@@ -329,7 +344,7 @@ public class HAConnection {
 
         private boolean transferData() throws Exception {
             int writeSizeZeroTimes = 0;
-            // Write Header
+            // Write Header  （写头）
             while (this.byteBufferHeader.hasRemaining()) {
                 int writeSize = this.socketChannel.write(this.byteBufferHeader);
                 if (writeSize > 0) {
@@ -350,9 +365,11 @@ public class HAConnection {
 
             writeSizeZeroTimes = 0;
 
-            // Write Body
+            // fixme 亮点：这里没有进行堆内存的复制，直接使用了MappedFile中的ByteBuffer，提升了性能
+            // Write Body  （写消息）
             if (!this.byteBufferHeader.hasRemaining()) {
                 while (this.selectMappedBufferResult.getByteBuffer().hasRemaining()) {
+                    // 写消息体
                     int writeSize = this.socketChannel.write(this.selectMappedBufferResult.getByteBuffer());
                     if (writeSize > 0) {
                         writeSizeZeroTimes = 0;

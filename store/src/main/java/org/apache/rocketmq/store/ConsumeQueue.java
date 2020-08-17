@@ -33,6 +33,8 @@ import org.apache.rocketmq.store.config.StorePathConfigHelper;
  * 一个Topic下默认是8个ConsumeQueue吧，在BrokerConfig中，覆盖了TopicConfig中的默认16个。
  *
  * 被FlushConsumeQueueService，flush全部ConsumeQueue后，休息1秒，然后继续全部flush
+ *
+ * 每个ConsumeQueue文件最多30W条记录 * 20字节/每条，也就是等于6M不到。
  */
 public class ConsumeQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
