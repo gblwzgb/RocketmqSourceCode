@@ -44,6 +44,8 @@ import sun.nio.ch.DirectBuffer;
 /*
  * 内存和文件的映射
  * 对应一个持久化文件
+ *
+ * 既可以映射CommitLog，也可以映射ConsumerQueue，内容不限
  */
 public class MappedFile extends ReferenceResource {
     // 4k

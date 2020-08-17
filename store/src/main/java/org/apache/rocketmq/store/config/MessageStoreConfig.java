@@ -20,6 +20,9 @@ import java.io.File;
 import org.apache.rocketmq.common.annotation.ImportantField;
 import org.apache.rocketmq.store.ConsumeQueue;
 
+/**
+ * 消息存储的配置信息
+ */
 public class MessageStoreConfig {
     //The root directory in which the log data is kept
     @ImportantField
@@ -32,7 +35,7 @@ public class MessageStoreConfig {
 
     // CommitLog file size,default is 1G
     private int mappedFileSizeCommitLog = 1024 * 1024 * 1024;
-    // ConsumeQueue file size,default is 30W  （译：ConsumeQueue文件大小，默认为30W）
+    // ConsumeQueue file size,default is 30W  （译：ConsumeQueue文件大小，默认为30W条 * 20字节）
     private int mappedFileSizeConsumeQueue = 300000 * ConsumeQueue.CQ_STORE_UNIT_SIZE;
     // enable consume queue ext
     private boolean enableConsumeQueueExt = false;
@@ -61,7 +64,7 @@ public class MessageStoreConfig {
     // Whether schedule flush,default is real-time
     @ImportantField
     private boolean flushCommitLogTimed = false;
-    // ConsumeQueue flush interval
+    // ConsumeQueue flush interval  （ConsumeQueue刷新间隔）
     private int flushIntervalConsumeQueue = 1000;
     // Resource reclaim interval
     private int cleanResourceInterval = 10000;
@@ -92,7 +95,7 @@ public class MessageStoreConfig {
     private int commitCommitLogLeastPages = 4;
     // Flush page size when the disk in warming state
     private int flushLeastPagesWhenWarmMapedFile = 1024 / 4 * 16;
-    // How many pages are to be flushed when flush ConsumeQueue
+    // How many pages are to be flushed when flush ConsumeQueue  （刷新ConsumeQueue时要刷新多少页）
     private int flushConsumeQueueLeastPages = 2;
     private int flushCommitLogThoroughInterval = 1000 * 10;
     private int commitCommitLogThoroughInterval = 200;

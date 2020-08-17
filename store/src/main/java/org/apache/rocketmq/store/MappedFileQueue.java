@@ -55,7 +55,7 @@ public class MappedFileQueue {
     /**
      * 构造方法
      *
-     * @param storePath 存储路径, userHome/store/commitlog
+     * @param storePath 存储路径, {user.home}/store/commitlog或{user.home}/store/consumequeue/{topic}/{queueId}
      * @param mappedFileSize 映射文件大小
      * @param allocateMappedFileService 分配生成映射文件的服务
      */
@@ -155,26 +155,35 @@ public class MappedFileQueue {
         }
     }
 
+    // 加载
     public boolean load() {
+        // 加载的目录
         File dir = new File(this.storePath);
+        // 列出目录下的文件
         File[] files = dir.listFiles();
         if (files != null) {
-            // ascending order
+            // ascending order  （升序）
             Arrays.sort(files);
             for (File file : files) {
 
                 if (file.length() != this.mappedFileSize) {
+                    // 如果文件大小和预期的不符，则返回错误。
                     log.warn(file + "\t" + file.length()
                         + " length not matched message store config value, please check it manually");
                     return false;
                 }
 
                 try {
+                    // 创建MappedFile
                     MappedFile mappedFile = new MappedFile(file.getPath(), mappedFileSize);
 
+                    // 设置写入的位点
                     mappedFile.setWrotePosition(this.mappedFileSize);
+                    // 设置刷新到的位点
                     mappedFile.setFlushedPosition(this.mappedFileSize);
+                    // 设置提交到的位点
                     mappedFile.setCommittedPosition(this.mappedFileSize);
+                    // 添加到队列中
                     this.mappedFiles.add(mappedFile);
                     log.info("load " + file.getPath() + " OK");
                 } catch (IOException e) {

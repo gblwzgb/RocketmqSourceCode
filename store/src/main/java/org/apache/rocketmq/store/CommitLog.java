@@ -45,6 +45,10 @@ import org.apache.rocketmq.store.ha.HAService;
 import org.apache.rocketmq.store.schedule.ScheduleMessageService;
 
 /**
+ * 大而全，应该是全局唯一的，所有的消息，都会进这里，存储在commitlog文件里。
+ */
+
+/**
  * Store all metadata downtime for recovery, data protection reliability
  * （译：存储所有元数据停机时间以进行恢复，确保数据保护的可靠性）
  */
@@ -56,6 +60,7 @@ public class CommitLog {
     protected final static int BLANK_MAGIC_CODE = -875286124;
     protected final MappedFileQueue mappedFileQueue;
     protected final DefaultMessageStore defaultMessageStore;
+    // 刷盘服务，默认异步刷盘（FlushRealTimeService），同步刷盘为GroupCommitService
     private final FlushCommitLogService flushCommitLogService;
 
     //If TransientStorePool enabled, we must flush message to FileChannel at fixed periods
@@ -63,6 +68,7 @@ public class CommitLog {
 
     private final AppendMessageCallback appendMessageCallback;
     private final ThreadLocal<MessageExtBatchEncoder> batchEncoderThreadLocal;
+    // 记录了topic下某个queueId的自增offset，生成commitLog时需要使用。
     protected HashMap<String/* topic-queueid */, Long/* offset */> topicQueueTable = new HashMap<String, Long>(1024);
     protected volatile long confirmOffset = -1L;
 
@@ -1746,7 +1752,8 @@ public class CommitLog {
                     break;
                 case MessageSysFlag.TRANSACTION_NOT_TYPE:
                 case MessageSysFlag.TRANSACTION_COMMIT_TYPE:
-                    // The next update ConsumeQueue information
+                    // The next update ConsumeQueue information  （下次更新ConsumeQueue信息）
+                    // 重要：更新下次某个topic-queueId要使用的offset
                     CommitLog.this.topicQueueTable.put(key, ++queueOffset);
                     break;
                 default:

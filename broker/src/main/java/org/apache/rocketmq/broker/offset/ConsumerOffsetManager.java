@@ -34,6 +34,7 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
 // 消费位点管理器
+// 在BrokerController中有个定时器，默认5秒持久化一次消费位点，存储地址为{user.home}/store/config/consumerOffset.json
 public class ConsumerOffsetManager extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final String TOPIC_GROUP_SEPARATOR = "@";
@@ -83,15 +84,20 @@ public class ConsumerOffsetManager extends ConfigManager {
         return result;
     }
 
+    // 这个GID消费了哪几个topic
     public Set<String> whichTopicByConsumer(final String group) {
         Set<String> topics = new HashSet<String>();
 
-        Iterator<Entry<String, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet().iterator();
+        // 遍历offsetTable，切割比对@后的字符串即可
+        Iterator<Entry<String/* topic@group */, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet().iterator();
         while (it.hasNext()) {
             Entry<String, ConcurrentMap<Integer, Long>> next = it.next();
+            // 只要key即可
             String topicAtGroup = next.getKey();
+            // 通过@符号切割
             String[] arrays = topicAtGroup.split(TOPIC_GROUP_SEPARATOR);
             if (arrays.length == 2) {
+                // 相等就是要找的topic
                 if (group.equals(arrays[1])) {
                     topics.add(arrays[0]);
                 }
@@ -101,10 +107,12 @@ public class ConsumerOffsetManager extends ConfigManager {
         return topics;
     }
 
+    // 这个topic被哪几个group消费了
     public Set<String> whichGroupByTopic(final String topic) {
         Set<String> groups = new HashSet<String>();
 
-        Iterator<Entry<String, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet().iterator();
+        // 遍历offsetTable，切割比对@前的字符串即可
+        Iterator<Entry<String/* topic@group */, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet().iterator();
         while (it.hasNext()) {
             Entry<String, ConcurrentMap<Integer, Long>> next = it.next();
             String topicAtGroup = next.getKey();
@@ -119,6 +127,15 @@ public class ConsumerOffsetManager extends ConfigManager {
         return groups;
     }
 
+    /**
+     * 处理consumer提交的消费位点
+     *
+     * @param clientHost 客户端host
+     * @param group 客户端GID
+     * @param topic 消息topic
+     * @param queueId 消息队列Id
+     * @param offset 消费位点
+     */
     public void commitOffset(final String clientHost, final String group, final String topic, final int queueId,
         final long offset) {
         // topic@group
@@ -126,6 +143,13 @@ public class ConsumerOffsetManager extends ConfigManager {
         this.commitOffset(clientHost, key, queueId, offset);
     }
 
+    /**
+     *
+     * @param clientHost 客户端host
+     * @param key topic@group
+     * @param queueId 消息队列Id
+     * @param offset 消费位点
+     */
     private void commitOffset(final String clientHost, final String key, final int queueId, final long offset) {
         ConcurrentMap<Integer, Long> map = this.offsetTable.get(key);
         if (null == map) {
@@ -161,6 +185,7 @@ public class ConsumerOffsetManager extends ConfigManager {
 
     @Override
     public String configFilePath() {
+        // {user.home}/store/config/consumerOffset.json
         return BrokerPathConfigHelper.getConsumerOffsetPath(this.brokerController.getMessageStoreConfig().getStorePathRootDir());
     }
 
