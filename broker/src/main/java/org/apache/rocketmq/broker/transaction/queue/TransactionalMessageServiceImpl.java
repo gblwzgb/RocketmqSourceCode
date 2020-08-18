@@ -62,6 +62,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
 
     @Override
     public CompletableFuture<PutMessageResult> asyncPrepareMessage(MessageExtBrokerInner messageInner) {
+        // 异步put半消息
         return transactionalMessageBridge.asyncPutHalfMessage(messageInner);
     }
 
@@ -70,7 +71,9 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
         return transactionalMessageBridge.putHalfMessage(messageInner);
     }
 
+    // 检查是否check超过15次，是否丢弃
     private boolean needDiscard(MessageExt msgExt, int transactionCheckMax) {
+        // 将checkTimes记录在属性中，超过15次，则丢弃这个事务消息
         String checkTimes = msgExt.getProperty(MessageConst.PROPERTY_TRANSACTION_CHECK_TIMES);
         int checkTime = 1;
         if (null != checkTimes) {
@@ -127,6 +130,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
     public void check(long transactionTimeout, int transactionCheckMax,
         AbstractTransactionalMessageCheckListener listener) {
         try {
+            // 半消息的topic
             String topic = MixAll.RMQ_SYS_TRANS_HALF_TOPIC;
             Set<MessageQueue> msgQueues = transactionalMessageBridge.fetchMessageQueues(topic);
             if (msgQueues == null || msgQueues.size() == 0) {
@@ -137,7 +141,9 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
             for (MessageQueue messageQueue : msgQueues) {
                 long startTime = System.currentTimeMillis();
                 MessageQueue opQueue = getOpQueue(messageQueue);
+                // 获取半消息的offset
                 long halfOffset = transactionalMessageBridge.fetchConsumeOffset(messageQueue);
+                // 获取op的offset
                 long opOffset = transactionalMessageBridge.fetchConsumeOffset(opQueue);
                 log.info("Before check, the queue={} msgOffset={} opOffset={}", messageQueue, halfOffset, opOffset);
                 if (halfOffset < 0 || opOffset < 0) {
@@ -188,6 +194,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                         }
 
                         if (needDiscard(msgExt, transactionCheckMax) || needSkip(msgExt)) {
+                            // 丢到topic：TRANS_CHECK_MAX_TIME_TOPIC中
                             listener.resolveDiscardMsg(msgExt);
                             newOffset = i + 1;
                             i++;
@@ -227,6 +234,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                             if (!putBackHalfMsgQueue(msgExt, i)) {
                                 continue;
                             }
+                            // 异步线程发送单向消息给producer，check事务状态，client发回来的消息通过EndTransactionProcessor处理
                             listener.resolveHalfMsg(msgExt);
                         } else {
                             pullResult = fillOpRemoveMap(removeMap, opQueue, pullResult.getNextBeginOffset(), halfOffset, doneOpOffset);

@@ -37,6 +37,7 @@ public class DefaultTransactionalMessageCheckListener extends AbstractTransactio
         super();
     }
 
+    // 丢到topic：TRANS_CHECK_MAX_TIME_TOPIC中
     @Override
     public void resolveDiscardMsg(MessageExt msgExt) {
         log.error("MsgExt:{} has been checked too many times, so discard it by moving it to system topic TRANS_CHECK_MAXTIME_TOPIC", msgExt);

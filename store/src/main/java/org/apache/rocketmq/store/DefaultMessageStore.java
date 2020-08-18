@@ -442,6 +442,7 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         long beginTime = this.getSystemClock().now();
+        /** 提交给CommitLog异步处理 */
         CompletableFuture<PutMessageResult> putResultFuture = this.commitLog.asyncPutMessage(msg);
 
         putResultFuture.thenAccept((result) -> {
@@ -1442,7 +1443,6 @@ public class DefaultMessageStore implements MessageStore {
         return true;
     }
 
-    // todo：看到这里
     private void recover(final boolean lastExitOK) {
         long maxPhyOffsetOfConsumeQueue = this.recoverConsumeQueue();
 

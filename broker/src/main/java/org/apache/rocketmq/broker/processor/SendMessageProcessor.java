@@ -292,14 +292,15 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         Map<String, String> origProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
         String transFlag = origProps.get(MessageConst.PROPERTY_TRANSACTION_PREPARED);
         if (transFlag != null && Boolean.parseBoolean(transFlag)) {
-            // 事务消息？
-            if (this.brokerController.getBrokerConfig().isRejectTransactionMessage()) {
+            // 事务消息处理逻辑
+            if (this.brokerController.getBrokerConfig().isRejectTransactionMessage()) {  // 默认false，接收事务消息
                 response.setCode(ResponseCode.NO_PERMISSION);
                 response.setRemark(
                         "the broker[" + this.brokerController.getBrokerConfig().getBrokerIP1()
                                 + "] sending transaction message is forbidden");
                 return CompletableFuture.completedFuture(response);
             }
+            // 使用事务消息服务
             putMessageResult = this.brokerController.getTransactionalMessageService().asyncPrepareMessage(msgInner);
         } else {
             // 异步put

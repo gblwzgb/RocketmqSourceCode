@@ -35,6 +35,10 @@ import org.apache.rocketmq.store.config.StorePathConfigHelper;
  * 被FlushConsumeQueueService，flush全部ConsumeQueue后，休息1秒，然后继续全部flush
  *
  * 每个ConsumeQueue文件最多30W条记录 * 20字节/每条，也就是等于6M不到。
+ *
+ * ConsumeQueue每条记录，记录的信息为：【CommitLog的物理偏移量，消息大小，tagsCode】
+ * ConsumeQueue自身有一个逻辑偏移量，CommitLog的明细中，会记录这个逻辑偏移量。
+ * Consumer通过逻辑偏移量，来ConsumeQueue中找，找到物理偏移量后，去CommitLog中取。
  */
 public class ConsumeQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -111,28 +115,37 @@ public class ConsumeQueue {
         return result;
     }
 
+    // 恢复
     public void recover() {
+        // 获取所有的MappedFile
         final List<MappedFile> mappedFiles = this.mappedFileQueue.getMappedFiles();
         if (!mappedFiles.isEmpty()) {
 
+            //
             int index = mappedFiles.size() - 3;
             if (index < 0)
                 index = 0;
 
+            // 每个ConsumeQueue文件的大小
             int mappedFileSizeLogics = this.mappedFileSize;
+            // 获取队列中index下标的MappedFile
             MappedFile mappedFile = mappedFiles.get(index);
+            // 获取MappedFile的ByteBuffer
             ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
+            // 获取文件名中带的offset
             long processOffset = mappedFile.getFileFromOffset();
             long mappedFileOffset = 0;
             long maxExtAddr = 1;
             while (true) {
-                for (int i = 0; i < mappedFileSizeLogics; i += CQ_STORE_UNIT_SIZE) {
+                for (int i = 0; i < mappedFileSizeLogics; i += CQ_STORE_UNIT_SIZE) {  // 每次都+20字节
+                    // ConsumeQueue记录信息的三要素，offset、size、tagsCode
                     long offset = byteBuffer.getLong();
                     int size = byteBuffer.getInt();
                     long tagsCode = byteBuffer.getLong();
 
                     if (offset >= 0 && size > 0) {
                         mappedFileOffset = i + CQ_STORE_UNIT_SIZE;
+                        // 最大物理偏移量
                         this.maxPhysicOffset = offset + size;
                         if (isExtAddr(tagsCode)) {
                             maxExtAddr = tagsCode;

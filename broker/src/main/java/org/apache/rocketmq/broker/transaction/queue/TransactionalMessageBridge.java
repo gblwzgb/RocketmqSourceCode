@@ -73,9 +73,11 @@ public class TransactionalMessageBridge {
     }
 
     public long fetchConsumeOffset(MessageQueue mq) {
+        // GID为CID_RMQ_SYS_TRANS，查询消费进度
         long offset = brokerController.getConsumerOffsetManager().queryOffset(TransactionalMessageUtil.buildConsumerGroup(),
             mq.getTopic(), mq.getQueueId());
         if (offset == -1) {
+            // 取不到则取store中最小的
             offset = store.getMinOffsetInQueue(mq.getTopic(), mq.getQueueId());
         }
         return offset;
@@ -197,17 +199,24 @@ public class TransactionalMessageBridge {
     }
 
     public CompletableFuture<PutMessageResult> asyncPutHalfMessage(MessageExtBrokerInner messageInner) {
+        // 偷换topic，然后异步put
         return store.asyncPutMessage(parseHalfMessageInner(messageInner));
     }
 
     private MessageExtBrokerInner parseHalfMessageInner(MessageExtBrokerInner msgInner) {
+        // 在REAL_TOPIC中记录真实topic
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_REAL_TOPIC, msgInner.getTopic());
+        // 在REAL_QID中记录真实queueId
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_REAL_QUEUE_ID,
             String.valueOf(msgInner.getQueueId()));
+        // 重置事务状态为TRANSACTION_NOT_TYPE
         msgInner.setSysFlag(
             MessageSysFlag.resetTransactionValue(msgInner.getSysFlag(), MessageSysFlag.TRANSACTION_NOT_TYPE));
+        // 替换topic为：RMQ_SYS_TRANS_HALF_TOPIC
         msgInner.setTopic(TransactionalMessageUtil.buildHalfTopic());
+        // 放在第一个queue中
         msgInner.setQueueId(0);
+        // 设置属性
         msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
         return msgInner;
     }
