@@ -64,7 +64,9 @@ public class HAConnection {
     }
 
     public void start() {
+        // 启动读线程
         this.readSocketService.start();
+        // 启动写线程
         this.writeSocketService.start();
     }
 

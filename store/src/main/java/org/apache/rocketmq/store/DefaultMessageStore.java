@@ -190,25 +190,32 @@ public class DefaultMessageStore implements MessageStore {
         boolean result = true;
 
         try {
+            // {user.home}/store/abort不存在，则表示上次退出的正常的
             boolean lastExitOK = !this.isTempFileExist();
             log.info("last shutdown {}", lastExitOK ? "normally" : "abnormally");
 
             if (null != scheduleMessageService) {
+
+                // 加载定时消息服务
                 result = result && this.scheduleMessageService.load();
             }
 
             // load Commit Log
+            // 加载{user.home}/store/commitlog下的所有文件（每个文件1G），使用虚拟内存技术
             result = result && this.commitLog.load();
 
             // load Consume Queue
+            // 加载{user.home}/store/consumequeue下的文件
             result = result && this.loadConsumeQueue();
 
             if (result) {
                 this.storeCheckpoint =
                     new StoreCheckpoint(StorePathConfigHelper.getStoreCheckpoint(this.messageStoreConfig.getStorePathRootDir()));
 
+                // 加载索引文件
                 this.indexService.load(lastExitOK);
 
+                // 恢复
                 this.recover(lastExitOK);
 
                 log.info("load over, and the max phy offset = {}", this.getMaxPhyOffset());
@@ -230,6 +237,7 @@ public class DefaultMessageStore implements MessageStore {
      */
     public void start() throws Exception {
 
+        // 尝试获取{user.home}/store/目录的锁
         lock = lockFile.getChannel().tryLock(0, 1, false);
         if (lock == null || lock.isShared() || !lock.isValid()) {
             throw new RuntimeException("Lock failed,MQ already started");
@@ -1393,13 +1401,16 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     private boolean loadConsumeQueue() {
+        // 加载{user.home}/store/consumequeue下的目录/{topic}/{queueId}
         File dirLogic = new File(StorePathConfigHelper.getStorePathConsumeQueue(this.messageStoreConfig.getStorePathRootDir()));
         File[] fileTopicList = dirLogic.listFiles();
         if (fileTopicList != null) {
 
+            // 获取topic目录列表
             for (File fileTopic : fileTopicList) {
                 String topic = fileTopic.getName();
 
+                // 某个topic目录下，有哪些queueId目录列表
                 File[] fileQueueIdList = fileTopic.listFiles();
                 if (fileQueueIdList != null) {
                     for (File fileQueueId : fileQueueIdList) {
@@ -1409,14 +1420,16 @@ public class DefaultMessageStore implements MessageStore {
                         } catch (NumberFormatException e) {
                             continue;
                         }
+                        // 创建ConsumeQueue
                         ConsumeQueue logic = new ConsumeQueue(
                             topic,
                             queueId,
                             StorePathConfigHelper.getStorePathConsumeQueue(this.messageStoreConfig.getStorePathRootDir()),
                             this.getMessageStoreConfig().getMappedFileSizeConsumeQueue(),
                             this);
+                        // 添加到缓存中
                         this.putConsumeQueue(topic, queueId, logic);
-                        if (!logic.load()) {
+                        if (!logic.load()) {  // 加载ConsumeQueue文件，映射成MappedFile
                             return false;
                         }
                     }
@@ -1429,6 +1442,7 @@ public class DefaultMessageStore implements MessageStore {
         return true;
     }
 
+    // todo：看到这里
     private void recover(final boolean lastExitOK) {
         long maxPhyOffsetOfConsumeQueue = this.recoverConsumeQueue();
 

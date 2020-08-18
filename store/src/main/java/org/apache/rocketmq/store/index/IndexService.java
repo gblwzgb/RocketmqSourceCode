@@ -44,7 +44,7 @@ public class IndexService {
     private final int hashSlotNum;
     // 5000000 * 4
     private final int indexNum;
-    // {user.home}/store/
+    // {user.home}/store/index
     private final String storePath;
     private final ArrayList<IndexFile> indexFileList = new ArrayList<IndexFile>();
     private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
@@ -58,6 +58,7 @@ public class IndexService {
     }
 
     public boolean load(final boolean lastExitOK) {
+        // {user.home}/store/index
         File dir = new File(this.storePath);
         File[] files = dir.listFiles();
         if (files != null) {
@@ -66,6 +67,7 @@ public class IndexService {
             for (File file : files) {
                 try {
                     IndexFile f = new IndexFile(file.getPath(), this.hashSlotNum, this.indexNum, 0, 0);
+                    // 加载索引文件
                     f.load();
 
                     if (!lastExitOK) {

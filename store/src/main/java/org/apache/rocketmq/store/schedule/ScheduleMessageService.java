@@ -45,6 +45,9 @@ import org.apache.rocketmq.store.PutMessageStatus;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
 
+/**
+ * 延迟消息服务 todo
+ */
 public class ScheduleMessageService extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
@@ -53,6 +56,7 @@ public class ScheduleMessageService extends ConfigManager {
     private static final long DELAY_FOR_A_WHILE = 100L;
     private static final long DELAY_FOR_A_PERIOD = 10000L;
 
+    // 每个级别对应的延迟时间(ms)
     private final ConcurrentMap<Integer /* level */, Long/* delay timeMillis */> delayLevelTable =
         new ConcurrentHashMap<Integer, Long>(32);
 
@@ -163,6 +167,7 @@ public class ScheduleMessageService extends ConfigManager {
 
     public boolean load() {
         boolean result = super.load();
+        // 解析延迟级别
         result = result && this.parseDelayLevel();
         return result;
     }
@@ -190,27 +195,36 @@ public class ScheduleMessageService extends ConfigManager {
         return delayOffsetSerializeWrapper.toJson(prettyFormat);
     }
 
+    // 解析延迟级别
     public boolean parseDelayLevel() {
         HashMap<String, Long> timeUnitTable = new HashMap<String, Long>();
+        // 时间单位
         timeUnitTable.put("s", 1000L);
         timeUnitTable.put("m", 1000L * 60);
         timeUnitTable.put("h", 1000L * 60 * 60);
         timeUnitTable.put("d", 1000L * 60 * 60 * 24);
 
+        // 1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h
         String levelString = this.defaultMessageStore.getMessageStoreConfig().getMessageDelayLevel();
         try {
+            // 空格分隔
             String[] levelArray = levelString.split(" ");
             for (int i = 0; i < levelArray.length; i++) {
+                // 截取后面的单位
                 String value = levelArray[i];
                 String ch = value.substring(value.length() - 1);
                 Long tu = timeUnitTable.get(ch);
 
+                // 当前延迟级别，1、2、3、4、5、....、18
                 int level = i + 1;
                 if (level > this.maxDelayLevel) {
                     this.maxDelayLevel = level;
                 }
+                // 截取1s前面的1
                 long num = Long.parseLong(value.substring(0, value.length() - 1));
+                // 1 * 1000 = 1000ms
                 long delayTimeMillis = tu * num;
+                // 延迟级别对应的延迟时间
                 this.delayLevelTable.put(level, delayTimeMillis);
             }
         } catch (Exception e) {

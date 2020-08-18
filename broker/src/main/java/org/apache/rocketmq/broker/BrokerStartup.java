@@ -55,6 +55,7 @@ public class BrokerStartup {
     public static InternalLogger log;
 
     public static void main(String[] args) {
+        // 创建Broker控制器，并启动
         start(createBrokerController(args));
     }
 
@@ -88,6 +89,7 @@ public class BrokerStartup {
     }
 
     public static BrokerController createBrokerController(String[] args) {
+        // 设置broker的版本
         System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
 
         if (null == System.getProperty(NettySystemConfig.COM_ROCKETMQ_REMOTING_SOCKET_SNDBUF_SIZE)) {
@@ -121,6 +123,7 @@ public class BrokerStartup {
                 messageStoreConfig.setAccessMessageInMemoryMaxRatio(ratio);
             }
 
+            // 获取属性文件，并转化成各种xxxConfig类
             if (commandLine.hasOption('c')) {
                 String file = commandLine.getOptionValue('c');
                 if (file != null) {
@@ -147,14 +150,18 @@ public class BrokerStartup {
                 System.exit(-2);
             }
 
+            // 从配置中获取nameserver的地址
             String namesrvAddr = brokerConfig.getNamesrvAddr();
             if (null != namesrvAddr) {
                 try {
+                    // 分号分隔
                     String[] addrArray = namesrvAddr.split(";");
                     for (String addr : addrArray) {
+                        // 试试看addr格式对不对
                         RemotingUtil.string2SocketAddress(addr);
                     }
                 } catch (Exception e) {
+                    // 格式不对则报错
                     System.out.printf(
                         "The Name Server Address[%s] illegal, please set it as follows, \"127.0.0.1:9876;192.168.0.1:9876\"%n",
                         namesrvAddr);
@@ -165,9 +172,11 @@ public class BrokerStartup {
             switch (messageStoreConfig.getBrokerRole()) {
                 case ASYNC_MASTER:
                 case SYNC_MASTER:
+                    // brokerId为0
                     brokerConfig.setBrokerId(MixAll.MASTER_ID);
                     break;
                 case SLAVE:
+                    // SLAVE的brokerId必须>0
                     if (brokerConfig.getBrokerId() <= 0) {
                         System.out.printf("Slave's brokerId must be > 0");
                         System.exit(-3);
@@ -178,15 +187,17 @@ public class BrokerStartup {
                     break;
             }
 
-            if (messageStoreConfig.isEnableDLegerCommitLog()) {
+            if (messageStoreConfig.isEnableDLegerCommitLog()) {  // 默认false
                 brokerConfig.setBrokerId(-1);
             }
 
+            // Ha，即Master-Slave之间的通信端口，是在Broker对客户端的通信端口上+1
             messageStoreConfig.setHaListenPort(nettyServerConfig.getListenPort() + 1);
             LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
             JoranConfigurator configurator = new JoranConfigurator();
             configurator.setContext(lc);
             lc.reset();
+            // 通过joran解析xml文件
             configurator.doConfigure(brokerConfig.getRocketmqHome() + "/conf/logback_broker.xml");
 
             if (commandLine.hasOption('p')) {
@@ -211,6 +222,7 @@ public class BrokerStartup {
             MixAll.printObjectProperties(log, nettyClientConfig);
             MixAll.printObjectProperties(log, messageStoreConfig);
 
+            // 实例化BrokerController
             final BrokerController controller = new BrokerController(
                 brokerConfig,
                 nettyServerConfig,
@@ -219,12 +231,15 @@ public class BrokerStartup {
             // remember all configs to prevent discard
             controller.getConfiguration().registerConfig(properties);
 
+            // 初始化BrokerController，内部是各种load
             boolean initResult = controller.initialize();
             if (!initResult) {
+                // 初始化失败，退出
                 controller.shutdown();
                 System.exit(-3);
             }
 
+            // 添加关闭hook
             Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
                 private volatile boolean hasShutdown = false;
                 private AtomicInteger shutdownTimes = new AtomicInteger(0);
@@ -236,6 +251,7 @@ public class BrokerStartup {
                         if (!this.hasShutdown) {
                             this.hasShutdown = true;
                             long beginTime = System.currentTimeMillis();
+                            // 关闭BrokerController
                             controller.shutdown();
                             long consumingTimeTotal = System.currentTimeMillis() - beginTime;
                             log.info("Shutdown hook over, consuming total time(ms): {}", consumingTimeTotal);
@@ -246,6 +262,7 @@ public class BrokerStartup {
 
             return controller;
         } catch (Throwable e) {
+            // 出现异常，退出
             e.printStackTrace();
             System.exit(-1);
         }

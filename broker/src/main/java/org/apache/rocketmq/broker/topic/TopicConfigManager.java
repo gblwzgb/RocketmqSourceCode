@@ -40,20 +40,26 @@ import org.apache.rocketmq.common.sysflag.TopicSysFlag;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+/**
+ * topic配置信息，存储路径：{user.home}/store/config/topics.json
+ */
 public class TopicConfigManager extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final long LOCK_TIMEOUT_MILLIS = 3000;
     private transient final Lock lockTopicConfigTable = new ReentrantLock();
 
+    // <topic, TopicConfig>
     private final ConcurrentMap<String, TopicConfig> topicConfigTable =
         new ConcurrentHashMap<String, TopicConfig>(1024);
     private final DataVersion dataVersion = new DataVersion();
+    // 系统自带的topic
     private final Set<String> systemTopicList = new HashSet<String>();
     private transient BrokerController brokerController;
 
     public TopicConfigManager() {
     }
 
+    // 添加8个系统的topic到systemTopicList中
     public TopicConfigManager(BrokerController brokerController) {
         this.brokerController = brokerController;
         {
@@ -91,6 +97,7 @@ public class TopicConfigManager extends ConfigManager {
         }
         {
 
+            // 默认为：DefaultCluster
             String topic = this.brokerController.getBrokerConfig().getBrokerClusterName();
             TopicConfig topicConfig = new TopicConfig(topic);
             this.systemTopicList.add(topic);

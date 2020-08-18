@@ -19,6 +19,19 @@ package org.apache.rocketmq.broker;
 
 import java.io.File;
 
+/**
+ * topic信息：
+ * {user.home}/store/config/topics.json
+ *
+ * 消费者消费进度：
+ * {user.home}/store/config/consumerOffset.json
+ *
+ *
+ * {user.home}/store/config/subscriptionGroup.json
+ *
+ *
+ * {user.home}/store/config/consumerFilter.json
+ */
 public class BrokerPathConfigHelper {
     private static String brokerConfigPath = System.getProperty("user.home") + File.separator + "store"
         + File.separator + "config" + File.separator + "broker.properties";
