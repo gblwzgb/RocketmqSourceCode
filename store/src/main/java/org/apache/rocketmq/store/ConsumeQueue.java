@@ -489,7 +489,7 @@ public class ConsumeQueue {
         // 期望的逻辑offset，因为每个ConsumeQueue记录的大小为20字节，所以这里*20
         final long expectLogicOffset = cqOffset * CQ_STORE_UNIT_SIZE;
 
-        // 获取逻辑offset所在的MappedFile
+        // 获取逻辑offset所在的MappedFile，不存在会创建一个
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile(expectLogicOffset);
         if (mappedFile != null) {
 

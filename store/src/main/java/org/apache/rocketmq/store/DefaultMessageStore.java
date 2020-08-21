@@ -64,6 +64,10 @@ import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
 /**
  * 默认消息存储
+ *
+ * 定期删除消息（文件保留3天）
+ *      因为是根据文件最后修改时间有没有超过三天来删除的，所以如果一个写入的非常少的应用，
+ *      理论上消息是可以保存很久的，比如说我每隔两天才写入一条消息，哈哈哈哈。
  */
 public class DefaultMessageStore implements MessageStore {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -644,7 +648,7 @@ public class DefaultMessageStore implements MessageStore {
                         final boolean diskFallRecorded = this.messageStoreConfig.isDiskFallRecorded();
                         ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();
                         for (; i < bufferConsumeQueue.getSize() && i < maxFilterMessageCount; i += ConsumeQueue.CQ_STORE_UNIT_SIZE) {
-                            // 读取一条记录，共8 + 4 + 8 = 20字节【offset、消息大小、tagsCode】
+                            // 读取一条记录，共8 + 4 + 8 = 20字节【commitlog中的物理offset、消息大小、tagsCode】
                             long offsetPy = bufferConsumeQueue.getByteBuffer().getLong();
                             int sizePy = bufferConsumeQueue.getByteBuffer().getInt();
                             long tagsCode = bufferConsumeQueue.getByteBuffer().getLong();
@@ -1624,6 +1628,7 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    //
     class CleanCommitLogService {
 
         private final static int MAX_MANUAL_DELETE_FILE_TIMES = 20;
@@ -1655,8 +1660,11 @@ public class DefaultMessageStore implements MessageStore {
 
         private void deleteExpiredFiles() {
             int deleteCount = 0;
+            // 文件保留时间，72，单位小时
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
+            // 100
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
+            // 1000 * 120
             int destroyMapedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
 
             boolean timeup = this.isTimeToDelete();
