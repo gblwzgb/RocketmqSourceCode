@@ -45,6 +45,7 @@ public class ProcessQueue {
     private final static long PULL_MAX_IDLE_TIME = Long.parseLong(System.getProperty("rocketmq.client.pull.pullMaxIdleTime", "120000"));
     private final InternalLogger log = ClientLogger.getLog();
     private final ReadWriteLock lockTreeMap = new ReentrantReadWriteLock();
+    // 这里用Map的原因，应该是为了去重，要不然一个List也能搞定吧。
     private final TreeMap<Long, MessageExt> msgTreeMap = new TreeMap<Long, MessageExt>();
     private final AtomicLong msgCount = new AtomicLong();
     private final AtomicLong msgSize = new AtomicLong();
@@ -52,6 +53,7 @@ public class ProcessQueue {
     /**
      * A subset of msgTreeMap, will only be used when orderly consume
      */
+    // 这个最大的作用，应该是fillProcessQueueInfo方法中，可以知道现在正在消费中的位点
     private final TreeMap<Long, MessageExt> consumingMsgOrderlyTreeMap = new TreeMap<Long, MessageExt>();
     private final AtomicLong tryUnlockTimes = new AtomicLong(0);
     private volatile long queueOffsetMax = 0L;
@@ -60,6 +62,7 @@ public class ProcessQueue {
     private volatile long lastConsumeTimestamp = System.currentTimeMillis();
     private volatile boolean locked = false;
     private volatile long lastLockTimestamp = System.currentTimeMillis();
+    // 顺序消息使用，用于控制要不要发送【消费请求】到线程池里
     private volatile boolean consuming = false;
     private volatile long msgAccCnt = 0;
 
@@ -141,6 +144,7 @@ public class ProcessQueue {
                 msgCount.addAndGet(validMsgCnt);
 
                 if (!msgTreeMap.isEmpty() && !this.consuming) {
+                    //
                     dispatchToConsume = true;
                     this.consuming = true;
                 }
@@ -261,13 +265,19 @@ public class ProcessQueue {
         try {
             this.lockTreeMap.writeLock().lockInterruptibly();
             try {
+                // 假如用户写的Listener回调是批量消费的，那么这一批要嘛一起成功，要嘛一起失败，直接取最后一个offset提交就行了。
+                // 就像一个事务一样，从fillProcessQueueInfo方法中就能看出端倪，是当一个事务来处理的。
                 Long offset = this.consumingMsgOrderlyTreeMap.lastKey();
+                // 清理消息数
                 msgCount.addAndGet(0 - this.consumingMsgOrderlyTreeMap.size());
                 for (MessageExt msg : this.consumingMsgOrderlyTreeMap.values()) {
+                    // 清理消息大小
                     msgSize.addAndGet(0 - msg.getBody().length);
                 }
+                // 清理consumingMsgOrderlyTreeMap，下次taskMessage时使用
                 this.consumingMsgOrderlyTreeMap.clear();
                 if (offset != null) {
+                    // 记录消费位点， todo：这里为什么要+1
                     return offset + 1;
                 }
             } finally {
