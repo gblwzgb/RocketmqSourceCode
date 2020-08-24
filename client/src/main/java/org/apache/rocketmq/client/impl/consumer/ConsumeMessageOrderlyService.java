@@ -52,6 +52,7 @@ import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 
 // 发送一个ConsumeRequest，让Request实现逻辑，自己去ProcessQueue中拉消息。
+// 一次消费，可以消费多条msg，组合成一个"事务"，这个"事务"里的消息，要嘛一起成功，要嘛一起失败。
 public class ConsumeMessageOrderlyService implements ConsumeMessageService {
     private static final InternalLogger log = ClientLogger.getLog();
     private final static long MAX_TIME_CONSUME_CONTINUOUSLY =
