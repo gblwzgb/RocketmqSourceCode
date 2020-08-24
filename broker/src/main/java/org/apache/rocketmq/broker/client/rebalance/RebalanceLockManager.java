@@ -102,8 +102,10 @@ public class RebalanceLockManager {
         if (groupValue != null) {
             LockEntry lockEntry = groupValue.get(mq);
             if (lockEntry != null) {
+                // 是这个clientId锁的，并且锁没有超时，默认60s
                 boolean locked = lockEntry.isLocked(clientId);
                 if (locked) {
+                    // 更新最后一次锁的时间
                     lockEntry.setLastUpdateTimestamp(System.currentTimeMillis());
                 }
 
@@ -121,8 +123,10 @@ public class RebalanceLockManager {
 
         for (MessageQueue mq : mqs) {
             if (this.isLocked(group, mq, clientId)) {
+                // 被当前客户端id锁的
                 lockedMqs.add(mq);
             } else {
+                // 未被当前客户端id锁的
                 notLockedMqs.add(mq);
             }
         }
@@ -232,7 +236,9 @@ public class RebalanceLockManager {
     }
 
     static class LockEntry {
+        // 锁的客户端id
         private String clientId;
+        // 锁的最后更新时间
         private volatile long lastUpdateTimestamp = System.currentTimeMillis();
 
         public String getClientId() {

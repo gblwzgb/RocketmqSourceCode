@@ -286,6 +286,9 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 break;
             case CLUSTERING:
                 List<MessageExt> msgBackFailed = new ArrayList<MessageExt>(consumeRequest.getMsgs().size());
+                // CONSUME_SUCCESS的时候，ack = msgSize，所以不会发回broker。
+                // RECONSUME_LATER的时候，会把这一批消息全部发回。比如batch10条，9条成功，1条失败，会全部发回去。
+                // broker内部会创建 %RETRY% 或 %DLQ% Topic。如果回发失败了，就consumer会尝试直接走投递流程。
                 for (int i = ackIndex + 1; i < consumeRequest.getMsgs().size(); i++) {
                     MessageExt msg = consumeRequest.getMsgs().get(i);
                     boolean result = this.sendMessageBack(msg, context);
