@@ -141,16 +141,22 @@ public class RemotingCommand {
         return decode(byteBuffer);
     }
 
+    // 见图知意：https://www.processon.com/diagraming/5f6c0167e401fd64b5d736b2
     public static RemotingCommand decode(final ByteBuffer byteBuffer) {
         int length = byteBuffer.limit();
+        // 4个字节记录了 header 的长度
         int oriHeaderLen = byteBuffer.getInt();
+        // 还原出 header 的长度
         int headerLength = getHeaderLength(oriHeaderLen);
 
         byte[] headerData = new byte[headerLength];
+        // 获取 header
         byteBuffer.get(headerData);
 
+        // 使用什么序列化方式，来反序列化 header
         RemotingCommand cmd = headerDecode(headerData, getProtocolType(oriHeaderLen));
 
+        // 解析出来的长度，
         int bodyLength = length - 4 - headerLength;
         byte[] bodyData = null;
         if (bodyLength > 0) {
@@ -401,7 +407,7 @@ public class RemotingCommand {
     }
 
     public ByteBuffer encodeHeader(final int bodyLength) {
-        // 1> header length size
+        // 1> header length size  （4字节记录 header 的长度）
         int length = 4;
 
         // 2> header data length
@@ -413,15 +419,16 @@ public class RemotingCommand {
         // 3> body data length
         length += bodyLength;
 
+        // 因为这里是写头，所以需要减掉body的长度
         ByteBuffer result = ByteBuffer.allocate(4 + length - bodyLength);
 
-        // length
+        // length（先用 4 字节来告诉对方，我的总长度是多少）
         result.putInt(length);
 
-        // header length
+        // header length（写入 header 的长度）
         result.put(markProtocolType(headerData.length, serializeTypeCurrentRPC));
 
-        // header data
+        // header data （写入 header 的数据）
         result.put(headerData);
 
         result.flip();

@@ -29,10 +29,12 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 public class NettyDecoder extends LengthFieldBasedFrameDecoder {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(RemotingHelper.ROCKETMQ_REMOTING);
 
+    // 消息不能超过16M
     private static final int FRAME_MAX_LENGTH =
         Integer.parseInt(System.getProperty("com.rocketmq.remoting.frameMaxLength", "16777216"));
 
     public NettyDecoder() {
+        // 使用4个字节来记录消息长度，解析出 frame 的时候，舍弃掉这4个字节
         super(FRAME_MAX_LENGTH, 0, 4, 0, 4);
     }
 

@@ -1444,7 +1444,7 @@ public class CommitLog {
      */
     // 同步刷盘，GroupCommitRequest里会有一个Future，用于异步转同步。
     class GroupCommitService extends FlushCommitLogService {
-        // fixme 亮点：请求被读写分离了，读和写加两把锁，不互相影响。
+        // fixme 亮点：请求被读写分离了，读和写加两把锁，不互相影响。为什么不能直接使用LinkedBlockingQueue？
 
         // 写队列，主要用于向该线程添加刷盘任务。
         private volatile List<GroupCommitRequest> requestsWrite = new ArrayList<GroupCommitRequest>();
@@ -1464,6 +1464,7 @@ public class CommitLog {
         }
 
         private void swapRequests() {
+            // todo：这里不会有线程安全问题吗？？
             List<GroupCommitRequest> tmp = this.requestsWrite;
             this.requestsWrite = this.requestsRead;
             this.requestsRead = tmp;
