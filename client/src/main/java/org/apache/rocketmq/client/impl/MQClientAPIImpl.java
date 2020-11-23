@@ -164,6 +164,7 @@ import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
+// 这个应该是专门和 broker 打交道的
 public class MQClientAPIImpl {
 
     private final static InternalLogger log = ClientLogger.getLog();
@@ -236,6 +237,7 @@ public class MQClientAPIImpl {
     }
 
     public void start() {
+        // 配置 Bootstrap，这里并没有建立连接
         this.remotingClient.start();
     }
 
@@ -448,9 +450,11 @@ public class MQClientAPIImpl {
         long beginStartTime = System.currentTimeMillis();
         RemotingCommand request = null;
         String msgType = msg.getProperty(MessageConst.PROPERTY_MESSAGE_TYPE);
+        // 是否重试消息
         boolean isReply = msgType != null && msgType.equals(MixAll.REPLY_MESSAGE_FLAG);
         if (isReply) {
-            if (sendSmartMsg) {
+            if (sendSmartMsg) {  // 默认 true
+                // V1 转 V2，使用短的变量名可以加快 fastjson 的序列化速度？？
                 SendMessageRequestHeaderV2 requestHeaderV2 = SendMessageRequestHeaderV2.createSendMessageRequestHeaderV2(requestHeader);
                 request = RemotingCommand.createRequestCommand(RequestCode.SEND_REPLY_MESSAGE_V2, requestHeaderV2);
             } else {
@@ -493,6 +497,7 @@ public class MQClientAPIImpl {
         return null;
     }
 
+    // 同步发送消息
     private SendResult sendMessageSync(
         final String addr,
         final String brokerName,

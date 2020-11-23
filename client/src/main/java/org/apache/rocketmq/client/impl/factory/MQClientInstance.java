@@ -85,6 +85,7 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
 import org.apache.rocketmq.remoting.netty.NettyClientConfig;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+// 作为和服务端（broker） 的通信方。producer 和 consumer 就是客户端了（client）
 public class MQClientInstance {
     private final static long LOCK_TIMEOUT_MILLIS = 3000;
     private final InternalLogger log = ClientLogger.getLog();
@@ -231,17 +232,18 @@ public class MQClientInstance {
                     this.serviceState = ServiceState.START_FAILED;
                     // If not specified,looking address from name server
                     if (null == this.clientConfig.getNamesrvAddr()) {
+                        // 如果没有指定 NS 的地址，则尝试通过 http 从一个指定的 url 去拉 NS 的地址。
                         this.mQClientAPIImpl.fetchNameServerAddr();
                     }
-                    // Start request-response channel
+                    // 配置 netty 的 bootstrap
                     this.mQClientAPIImpl.start();
-                    // Start various schedule tasks
+                    // 启动各种定时任务
                     this.startScheduledTask();
-                    // Start pull service
+                    // 启动拉消息服务（PullMessageService）
                     this.pullMessageService.start();
-                    // Start rebalance service
+                    // 启动负载均衡服务（RebalanceService）
                     this.rebalanceService.start();
-                    // Start push service
+                    // 启动生产者服务（这里因为和 consumer 是共用的，所以从 producer 的视角来看就会觉得很奇怪，为什么又启动了一次，哈哈哈）
                     this.defaultMQProducer.getDefaultMQProducerImpl().start(false);
                     log.info("the client factory [{}] start OK", this.clientId);
                     this.serviceState = ServiceState.RUNNING;
@@ -256,6 +258,7 @@ public class MQClientInstance {
 
     private void startScheduledTask() {
         if (null == this.clientConfig.getNamesrvAddr()) {
+            // 没指定 NS 地址时，每隔2分钟，拉取一次 NS 地址。
             this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
                 @Override
@@ -269,6 +272,7 @@ public class MQClientInstance {
             }, 1000 * 10, 1000 * 60 * 2, TimeUnit.MILLISECONDS);
         }
 
+        // 每隔30秒拉取一下 topic 的路由信息
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -281,6 +285,7 @@ public class MQClientInstance {
             }
         }, 10, this.clientConfig.getPollNameServerInterval(), TimeUnit.MILLISECONDS);
 
+        // 每隔30秒清理离线的 broker、发送心跳给所有的 broker
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -294,6 +299,7 @@ public class MQClientInstance {
             }
         }, 1000, this.clientConfig.getHeartbeatBrokerInterval(), TimeUnit.MILLISECONDS);
 
+        // 每隔5秒，持久化所有消费者的offset
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -306,6 +312,7 @@ public class MQClientInstance {
             }
         }, 1000 * 10, this.clientConfig.getPersistConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
 
+        // 每隔60s，动态调整消费线程池
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -346,6 +353,7 @@ public class MQClientInstance {
         // Producer
         {
             Iterator<Entry<String, MQProducerInner>> it = this.producerTable.entrySet().iterator();
+            // 获取 topic 列表
             while (it.hasNext()) {
                 Entry<String, MQProducerInner> entry = it.next();
                 MQProducerInner impl = entry.getValue();
@@ -357,6 +365,7 @@ public class MQClientInstance {
         }
 
         for (String topic : topicList) {
+            // 从 NS 中通过 netty 获取到 topic 的路由信息
             this.updateTopicRouteInfoFromNameServer(topic);
         }
     }
@@ -507,12 +516,13 @@ public class MQClientInstance {
         }
     }
 
+    // consumer、producer 共用该逻辑。底层通过 GET_ROUTEINTO_BY_TOPIC，从 nameserver 获取 topic 的路由信息
     public boolean updateTopicRouteInfoFromNameServer(final String topic) {
         return updateTopicRouteInfoFromNameServer(topic, false, null);
     }
 
     private boolean isBrokerAddrExistInTopicRouteTable(final String addr) {
-        Iterator<Entry<String, TopicRouteData>> it = this.topicRouteTable.entrySet().iterator();
+        Iterator<Entry<String/* topic */, TopicRouteData>> it = this.topicRouteTable.entrySet().iterator();
         while (it.hasNext()) {
             Entry<String, TopicRouteData> entry = it.next();
             TopicRouteData topicRouteData = entry.getValue();
@@ -641,6 +651,7 @@ public class MQClientInstance {
 
                             // Update Pub info
                             {
+                                // TopicRouteData 转 TopicPublishInfo
                                 TopicPublishInfo publishInfo = topicRouteData2TopicPublishInfo(topic, topicRouteData);
                                 publishInfo.setHaveTopicRouterInfo(true);
                                 Iterator<Entry<String, MQProducerInner>> it = this.producerTable.entrySet().iterator();
@@ -648,6 +659,7 @@ public class MQClientInstance {
                                     Entry<String, MQProducerInner> entry = it.next();
                                     MQProducerInner impl = entry.getValue();
                                     if (impl != null) {
+                                        // 更新在 DefaultMQProducerImpl 中
                                         impl.updateTopicPublishInfo(topic, publishInfo);
                                     }
                                 }
@@ -933,6 +945,7 @@ public class MQClientInstance {
         }
     }
 
+    // 就是放到缓存中去了
     public boolean registerProducer(final String group, final DefaultMQProducerImpl producer) {
         if (null == group || null == producer) {
             return false;

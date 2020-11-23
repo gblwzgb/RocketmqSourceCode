@@ -434,6 +434,7 @@ public abstract class NettyRemotingAbstract {
                         responseFuture.setSendRequestOK(false);
                     }
 
+                    // 失败了，把这个删掉
                     responseTable.remove(opaque);
                     responseFuture.setCause(f.cause());
                     responseFuture.putResponse(null);
@@ -441,6 +442,7 @@ public abstract class NettyRemotingAbstract {
                 }
             });
 
+            // 阻塞在这里。netty 收到消息后，根据 opaque 取出 responseFuture 并通知等待的线程。（使用了 CountDownLatch）
             RemotingCommand responseCommand = responseFuture.waitResponse(timeoutMillis);
             if (null == responseCommand) {
                 if (responseFuture.isSendRequestOK()) {
@@ -462,11 +464,13 @@ public abstract class NettyRemotingAbstract {
         throws InterruptedException, RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
         long beginStartTime = System.currentTimeMillis();
         final int opaque = request.getOpaque();
+        // 默认 65535 的信号量
         boolean acquired = this.semaphoreAsync.tryAcquire(timeoutMillis, TimeUnit.MILLISECONDS);
         if (acquired) {
             final SemaphoreReleaseOnlyOnce once = new SemaphoreReleaseOnlyOnce(this.semaphoreAsync);
             long costTime = System.currentTimeMillis() - beginStartTime;
             if (timeoutMillis < costTime) {
+                // 获取的信号量消耗的时间，都已经比发送超时时间长了，也不用发了，直接释放信号量，然后抛异常吧。。
                 once.release();
                 throw new RemotingTimeoutException("invokeAsyncImpl call timeout");
             }

@@ -24,10 +24,14 @@ import org.apache.rocketmq.common.protocol.route.QueueData;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 
 public class TopicPublishInfo {
+    // 是否顺序消息的 topic
     private boolean orderTopic = false;
     private boolean haveTopicRouterInfo = false;
+    // topic 下的队列列表
     private List<MessageQueue> messageQueueList = new ArrayList<MessageQueue>();
+    // 发到哪个队列？用于普通消息，每个线程维护一个变量，所以每个线程发送的时候是近似轮询的。
     private volatile ThreadLocalIndex sendWhichQueue = new ThreadLocalIndex();
+    // topic 的路由信息
     private TopicRouteData topicRouteData;
 
     public boolean isOrderTopic() {

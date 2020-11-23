@@ -79,11 +79,14 @@ public class NamesrvController {
 
         this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.brokerHousekeepingService);
 
+        // 默认8
         this.remotingExecutor =
             Executors.newFixedThreadPool(nettyServerConfig.getServerWorkerThreads(), new ThreadFactoryImpl("RemotingExecutorThread_"));
 
+        // 注册 DefaultRequestProcessor
         this.registerProcessor();
 
+        // 10s 一次，心跳检测，清理掉下线的 broker
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -92,6 +95,7 @@ public class NamesrvController {
             }
         }, 5, 10, TimeUnit.SECONDS);
 
+        // 10分钟一次
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -153,6 +157,7 @@ public class NamesrvController {
     }
 
     public void start() throws Exception {
+        // 启动 netty 服务端
         this.remotingServer.start();
 
         if (this.fileWatchService != null) {

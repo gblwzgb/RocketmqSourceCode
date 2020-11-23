@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Random;
 import org.apache.rocketmq.common.MixAll;
 
+// 封装了 broker 的信息
 public class BrokerData implements Comparable<BrokerData> {
     private String cluster;
     private String brokerName;

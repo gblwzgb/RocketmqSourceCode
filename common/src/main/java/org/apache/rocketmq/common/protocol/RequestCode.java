@@ -59,6 +59,7 @@ public class RequestCode {
     // 通过GID，获取消息者列表
     public static final int GET_CONSUMER_LIST_BY_GROUP = 38;
 
+    // broker 检查本地事务的。
     public static final int CHECK_TRANSACTION_STATE = 39;
 
     public static final int NOTIFY_CONSUMER_IDS_CHANGED = 40;

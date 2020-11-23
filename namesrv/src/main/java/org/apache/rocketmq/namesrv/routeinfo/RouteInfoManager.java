@@ -49,6 +49,7 @@ public class RouteInfoManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
     private final static long BROKER_CHANNEL_EXPIRED_TIME = 1000 * 60 * 2;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    // 因为一个 topic 可以有多个 broker 组成，每个 broker 中的队列是可以不同的，所以这里是列表
     private final HashMap<String/* topic */, List<QueueData>> topicQueueTable;
     private final HashMap<String/* brokerName */, BrokerData> brokerAddrTable;
     private final HashMap<String/* clusterName */, Set<String/* brokerName */>> clusterAddrTable;
@@ -126,6 +127,7 @@ public class RouteInfoManager {
                 if (null == brokerData) {
                     registerFirst = true;
                     brokerData = new BrokerData(clusterName, brokerName, new HashMap<Long, String>());
+                    /** 放入缓存中 */
                     this.brokerAddrTable.put(brokerName, brokerData);
                 }
                 Map<Long, String> brokerAddrsMap = brokerData.getBrokerAddrs();
@@ -150,15 +152,17 @@ public class RouteInfoManager {
                             topicConfigWrapper.getTopicConfigTable();
                         if (tcTable != null) {
                             for (Map.Entry<String, TopicConfig> entry : tcTable.entrySet()) {
+                                /** 创建或更新 broker 的队列信息 */
                                 this.createAndUpdateQueueData(brokerName, entry.getValue());
                             }
                         }
                     }
                 }
 
+                // 每次都创建一个新的 BrokerLiveInfo，替换掉老的
                 BrokerLiveInfo prevBrokerLiveInfo = this.brokerLiveTable.put(brokerAddr,
                     new BrokerLiveInfo(
-                        System.currentTimeMillis(),
+                        System.currentTimeMillis(),  // 这个时间用来做心跳检测！
                         topicConfigWrapper.getDataVersion(),
                         channel,
                         haServerAddr));
@@ -215,6 +219,7 @@ public class RouteInfoManager {
     }
 
     private void createAndUpdateQueueData(final String brokerName, final TopicConfig topicConfig) {
+        // QueueData 对象组装。
         QueueData queueData = new QueueData();
         queueData.setBrokerName(brokerName);
         queueData.setWriteQueueNums(topicConfig.getWriteQueueNums());
@@ -224,6 +229,7 @@ public class RouteInfoManager {
 
         List<QueueData> queueDataList = this.topicQueueTable.get(topicConfig.getTopicName());
         if (null == queueDataList) {
+            // 当前是第一个 broker 注册了这个 topic，如果有新的 broker 也注册了这个 topic，则走下面的 else
             queueDataList = new LinkedList<QueueData>();
             queueDataList.add(queueData);
             this.topicQueueTable.put(topicConfig.getTopicName(), queueDataList);
@@ -236,8 +242,10 @@ public class RouteInfoManager {
                 QueueData qd = it.next();
                 if (qd.getBrokerName().equals(brokerName)) {
                     if (qd.equals(queueData)) {
+                        // 如果注册上来的 brokerName、QueueData 信息一模一样，则忽略了
                         addNewOne = false;
                     } else {
+                        // 如果注册上来的 brokerName 相同，但是 QueueData 不同，说明是 broker 的配置信息变更了，先把老的移除掉。
                         log.info("topic changed, {} OLD: {} NEW: {}", topicConfig.getTopicName(), qd,
                             queueData);
                         it.remove();
@@ -246,6 +254,7 @@ public class RouteInfoManager {
             }
 
             if (addNewOne) {
+                // 添加一个新的 broker 队列信息
                 queueDataList.add(queueData);
             }
         }
@@ -385,11 +394,13 @@ public class RouteInfoManager {
         try {
             try {
                 this.lock.readLock().lockInterruptibly();
+                // 获取 topic 的队列信息
                 List<QueueData> queueDataList = this.topicQueueTable.get(topic);
                 if (queueDataList != null) {
                     topicRouteData.setQueueDatas(queueDataList);
                     foundQueueData = true;
 
+                    // 从队列信息中，提取出所有的 brokerName
                     Iterator<QueueData> it = queueDataList.iterator();
                     while (it.hasNext()) {
                         QueueData qd = it.next();
@@ -397,8 +408,10 @@ public class RouteInfoManager {
                     }
 
                     for (String brokerName : brokerNameSet) {
+                        // 获取 brokerName 对应的 broker 信息
                         BrokerData brokerData = this.brokerAddrTable.get(brokerName);
                         if (null != brokerData) {
+                            // clone 一份
                             BrokerData brokerDataClone = new BrokerData(brokerData.getCluster(), brokerData.getBrokerName(), (HashMap<Long, String>) brokerData
                                 .getBrokerAddrs().clone());
                             brokerDataList.add(brokerDataClone);
@@ -431,6 +444,7 @@ public class RouteInfoManager {
         while (it.hasNext()) {
             Entry<String, BrokerLiveInfo> next = it.next();
             long last = next.getValue().getLastUpdateTimestamp();
+            // 超过 2 分钟未更新，认为 broker 挂了。
             if ((last + BROKER_CHANNEL_EXPIRED_TIME) < System.currentTimeMillis()) {
                 RemotingUtil.closeChannel(next.getValue().getChannel());
                 it.remove();

@@ -59,6 +59,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     /**
      * Wrapping internal implementations for virtually all methods presented in this class.
      */
+    // 构造方法出实例化
     protected final transient DefaultMQProducerImpl defaultMQProducerImpl;
     private final InternalLogger log = ClientLogger.getLog();
     /**
@@ -146,7 +147,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     }
 
     /**
-     * Constructor specifying producer group.
+     * 构造函数指定生产者组。
      *
      * @param producerGroup Producer group, see the name-sake field.
      * @param rpcHook RPC hook to execute per each remoting command execution.
@@ -258,12 +259,8 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     }
 
     /**
-     * Start this producer instance. </p>
-     *
-     * <strong> Much internal initializing procedures are carried out to make this instance prepared, thus, it's a must
-     * to invoke this method before sending or querying messages. </strong> </p>
-     *
-     * @throws MQClientException if there is any unexpected error.
+     * 启动此生产者实例。
+     * 需要执行许多内部初始化过程来准备此实例，因此，在发送或查询消息之前必须调用此方法。
      */
     @Override
     public void start() throws MQClientException {
@@ -279,7 +276,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     }
 
     /**
-     * This method shuts down this producer instance and releases related resources.
+     * 关闭该生产者实例并释放相关的资源
      */
     @Override
     public void shutdown() {
@@ -320,6 +317,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     public SendResult send(
         Message msg) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         Validators.checkMessage(msg, this);
+        // 如果有 namespace，就包一下，否则就不包。
         msg.setTopic(withNamespace(msg.getTopic()));
         return this.defaultMQProducerImpl.send(msg);
     }

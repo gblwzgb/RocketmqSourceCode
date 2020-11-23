@@ -260,6 +260,7 @@ public class DefaultMessageStore implements MessageStore {
             for (ConcurrentMap<Integer, ConsumeQueue> maps : this.consumeQueueTable.values()) {
                 for (ConsumeQueue logic : maps.values()) {
                     if (logic.getMaxPhysicOffset() > maxPhysicalPosInLogicQueue) {
+                        // 从所有 topic、queue 中找出最大的物理偏移量，从这个点开始继续同步。
                         maxPhysicalPosInLogicQueue = logic.getMaxPhysicOffset();
                     }
                 }

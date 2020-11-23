@@ -26,6 +26,7 @@ import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.exception.RemotingException;
 
+// 对外的门面接口，封装了各种各样的发放方法
 public interface MQProducer extends MQAdmin {
     void start() throws MQClientException;
 
@@ -33,6 +34,8 @@ public interface MQProducer extends MQAdmin {
 
     List<MessageQueue> fetchPublishMessageQueues(final String topic) throws MQClientException;
 
+    /** 最常用的方法 */
+    // 默认超时时间 3S
     SendResult send(final Message msg) throws MQClientException, RemotingException, MQBrokerException,
         InterruptedException;
 
@@ -48,6 +51,7 @@ public interface MQProducer extends MQAdmin {
     void sendOneway(final Message msg) throws MQClientException, RemotingException,
         InterruptedException;
 
+    /** 指定发送到哪个队列，一般不用吧 */
     SendResult send(final Message msg, final MessageQueue mq) throws MQClientException,
         RemotingException, MQBrokerException, InterruptedException;
 
@@ -63,6 +67,7 @@ public interface MQProducer extends MQAdmin {
     void sendOneway(final Message msg, final MessageQueue mq) throws MQClientException,
         RemotingException, InterruptedException;
 
+    /** 指定了队列选择的策略 */
     SendResult send(final Message msg, final MessageQueueSelector selector, final Object arg)
         throws MQClientException, RemotingException, MQBrokerException, InterruptedException;
 
@@ -84,9 +89,11 @@ public interface MQProducer extends MQAdmin {
     TransactionSendResult sendMessageInTransaction(final Message msg,
         final LocalTransactionExecuter tranExecuter, final Object arg) throws MQClientException;
 
+    /** 事务消息，使用 TransactionMQProducer */
     TransactionSendResult sendMessageInTransaction(final Message msg,
         final Object arg) throws MQClientException;
 
+    /** 批量发送，没用过 */
     //for batch
     SendResult send(final Collection<Message> msgs) throws MQClientException, RemotingException, MQBrokerException,
         InterruptedException;
