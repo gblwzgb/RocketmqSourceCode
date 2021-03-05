@@ -40,6 +40,7 @@ public class ClientHousekeepingService implements ChannelEventListener {
 
     public void start() {
 
+        // 这个是 onChannelIdle 的兜底吗，怕 onChannelIdle 没起作用？
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
