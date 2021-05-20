@@ -86,6 +86,7 @@ import org.apache.rocketmq.remoting.netty.NettyClientConfig;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
 // 作为和服务端（broker） 的通信方。producer 和 consumer 就是客户端了（client）
+// 每个jvm共用该实例，通过提供 registerConsumer、registerProducer 方法，等待具体的消费者、生产者注册进来。
 public class MQClientInstance {
     private final static long LOCK_TIMEOUT_MILLIS = 3000;
     private final InternalLogger log = ClientLogger.getLog();
@@ -212,6 +213,7 @@ public class MQClientInstance {
     public static Set<MessageQueue> topicRouteData2TopicSubscribeInfo(final String topic, final TopicRouteData route) {
         Set<MessageQueue> mqList = new HashSet<MessageQueue>();
         List<QueueData> qds = route.getQueueDatas();
+        // 这里如果有两个broker的话，queueId会分别是[0,1,2,3...]、[0,1,2,3...]
         for (QueueData qd : qds) {
             if (PermName.isReadable(qd.getPerm())) {
                 for (int i = 0; i < qd.getReadQueueNums(); i++) {
@@ -312,7 +314,7 @@ public class MQClientInstance {
             }
         }, 1000 * 10, this.clientConfig.getPersistConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
 
-        // 每隔60s，动态调整消费线程池
+        // 每隔60s，动态调整消费线程池（不知道为啥调整线程池的代码都被注释掉了）
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override

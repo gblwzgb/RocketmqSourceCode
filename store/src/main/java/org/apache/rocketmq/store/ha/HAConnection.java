@@ -237,10 +237,10 @@ public class HAConnection {
                     }
 
                     if (-1 == this.nextTransferFromWhere) {
-                        if (0 == HAConnection.this.slaveRequestOffset) {
+                        if (0 == HAConnection.this.slaveRequestOffset) {  // slave无任何commitlog，从最后一个commitlog文件开始同步
                             // 从CommitLog中获取最大offset
                             long masterOffset = HAConnection.this.haService.getDefaultMessageStore().getCommitLog().getMaxOffset();
-                            // todo：
+                            // 加入是5.5g，那么这里masterOffset就是5.5 - 0.5 = 5g，从最新的那个commitlog文件开始同步
                             masterOffset =
                                 masterOffset
                                     - (masterOffset % HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig()
@@ -261,9 +261,11 @@ public class HAConnection {
 
                     if (this.lastWriteOver) {
 
+                        // 多久没写过了
                         long interval =
                             HAConnection.this.haService.getDefaultMessageStore().getSystemClock().now() - this.lastWriteTimestamp;
 
+                        // 发送心跳包
                         if (interval > HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig()
                             .getHaSendHeartbeatInterval()) {
 
@@ -284,10 +286,12 @@ public class HAConnection {
                             continue;
                     }
 
+                    // 定位nextTransferFromWhere在哪个commitlog文件中，并从这个commitlog的nextTransferFromWhere偏移量读到该commitlog尾。
                     SelectMappedBufferResult selectResult =
                         HAConnection.this.haService.getDefaultMessageStore().getCommitLogData(this.nextTransferFromWhere);
                     if (selectResult != null) {
                         int size = selectResult.getSize();
+                        // 最多每次发32KB
                         if (size > HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig().getHaTransferBatchSize()) {
                             size = HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig().getHaTransferBatchSize();
                         }
@@ -295,6 +299,7 @@ public class HAConnection {
                         long thisOffset = this.nextTransferFromWhere;
                         this.nextTransferFromWhere += size;
 
+                        /** 限定最多32KB */
                         selectResult.getByteBuffer().limit(size);
                         this.selectMappedBufferResult = selectResult;
 
@@ -367,7 +372,7 @@ public class HAConnection {
 
             writeSizeZeroTimes = 0;
 
-            // fixme 亮点：这里没有进行堆内存的复制，直接使用了MappedFile中的ByteBuffer，提升了性能
+            // fixme 亮点：这里没有进行堆内存的复制，直接使用了MappedFile中的ByteBuffer，提升了性能（如果同步没有延迟的话，就会一直命中pagecache，性能更佳）
             // Write Body  （写消息）
             if (!this.byteBufferHeader.hasRemaining()) {
                 while (this.selectMappedBufferResult.getByteBuffer().hasRemaining()) {

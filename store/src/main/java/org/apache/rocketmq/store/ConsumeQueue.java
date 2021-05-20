@@ -460,6 +460,7 @@ public class ConsumeQueue {
 
         // XXX: warn and notify me
         log.error("[BUG]consume queue can not write, {} {}", this.topic, this.queueId);
+        // 设置该队列为不可用
         this.defaultMessageStore.getRunningFlags().makeLogicsQueueError();
     }
 

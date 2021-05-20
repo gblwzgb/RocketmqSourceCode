@@ -60,13 +60,20 @@ public class RemoteBrokerOffsetStore implements OffsetStore {
         if (mq != null) {
             AtomicLong offsetOld = this.offsetTable.get(mq);
             if (null == offsetOld) {
+                // 当offset不存在时才会put进去。
                 offsetOld = this.offsetTable.putIfAbsent(mq, new AtomicLong(offset));
             }
 
+            // 这里有两种情况不为null
+            // 1、get出来就不是null
+            // 2、putIfAbsent产生的数据竞争
             if (null != offsetOld) {
+                // 新值替换旧值
                 if (increaseOnly) {
+                    // 只递增。即大值覆盖小值
                     MixAll.compareAndIncreaseOnly(offsetOld, offset);
                 } else {
+                    // 允许小值覆盖大值
                     offsetOld.set(offset);
                 }
             }

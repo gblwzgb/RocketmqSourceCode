@@ -301,6 +301,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         if (transFlag != null && Boolean.parseBoolean(transFlag)) {
             // 事务消息处理逻辑
             if (this.brokerController.getBrokerConfig().isRejectTransactionMessage()) {  // 默认false，接收事务消息
+                // 配置成了不支持事务消息
                 response.setCode(ResponseCode.NO_PERMISSION);
                 response.setRemark(
                         "the broker[" + this.brokerController.getBrokerConfig().getBrokerIP1()

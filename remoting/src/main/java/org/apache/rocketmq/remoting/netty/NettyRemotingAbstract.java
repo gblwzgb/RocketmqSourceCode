@@ -230,7 +230,7 @@ public abstract class NettyRemotingAbstract {
                             processor.asyncProcessRequest(ctx, cmd, callback);
                         } else {
                             NettyRequestProcessor processor = pair.getObject1();
-                            // 同步处理请求
+                            // 同步处理请求（看了下默认实现里，没有同步处理的处理器，都继承自 AsyncNettyRequestProcessor - -）
                             RemotingCommand response = processor.processRequest(ctx, cmd);
                             doAfterRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd, response);
                             callback.callback(response);
@@ -249,6 +249,7 @@ public abstract class NettyRemotingAbstract {
                 }
             };
 
+            // 在 SendMessageProcessor 中，会有producer的流控
             if (pair.getObject1().rejectRequest()) {
                 final RemotingCommand response = RemotingCommand.createResponseCommand(RemotingSysResponseCode.SYSTEM_BUSY,
                     "[REJECTREQUEST]system busy, start flow control for a while");
@@ -464,7 +465,7 @@ public abstract class NettyRemotingAbstract {
         throws InterruptedException, RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
         long beginStartTime = System.currentTimeMillis();
         final int opaque = request.getOpaque();
-        // 默认 65535 的信号量
+        // 默认 65535 的信号量，用于限流
         boolean acquired = this.semaphoreAsync.tryAcquire(timeoutMillis, TimeUnit.MILLISECONDS);
         if (acquired) {
             final SemaphoreReleaseOnlyOnce once = new SemaphoreReleaseOnlyOnce(this.semaphoreAsync);

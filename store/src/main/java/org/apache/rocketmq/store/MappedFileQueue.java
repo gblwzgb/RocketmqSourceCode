@@ -234,8 +234,9 @@ public class MappedFileQueue {
                 + UtilAll.offset2FileName(createOffset + this.mappedFileSize);
             MappedFile mappedFile = null;
 
-            // 有分配的服务则用服务，会创建两个MappedFile
+            // 有分配的服务则用服务，会创建两个MappedFile。这里commitlog是走这里的，
             if (this.allocateMappedFileService != null) {
+                // commitlog通过预分配来优化，毕竟1个g呢。提前分配起来，对性能影响小。
                 mappedFile = this.allocateMappedFileService.putRequestAndReturnMappedFile(nextFilePath,
                     nextNextFilePath, this.mappedFileSize);
             } else {

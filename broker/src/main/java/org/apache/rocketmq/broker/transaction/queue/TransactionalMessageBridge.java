@@ -335,6 +335,7 @@ public class TransactionalMessageBridge {
             }
         }
         if (opQueue == null) {
+            // topic：RMQ_SYS_TRANS_OP_HALF_TOPIC
             opQueue = new MessageQueue(TransactionalMessageUtil.buildOpTopic(), mq.getBrokerName(), mq.getQueueId());
         }
         putMessage(makeOpMessageInner(message, opQueue));

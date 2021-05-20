@@ -167,7 +167,7 @@ public class ConsumerOffsetManager extends ConfigManager {
     }
 
     public long queryOffset(final String group, final String topic, final int queueId) {
-        // topic@group
+        // topic@group。这里的group是写死的【CID_RMQ_SYS_TRANS】
         String key = topic + TOPIC_GROUP_SEPARATOR + group;
         ConcurrentMap<Integer, Long> map = this.offsetTable.get(key);
         if (null != map) {

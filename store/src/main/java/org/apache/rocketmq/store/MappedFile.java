@@ -167,6 +167,7 @@ public class MappedFile extends ReferenceResource {
     private void init(final String fileName, final int fileSize) throws IOException {
         this.fileName = fileName;
         this.fileSize = fileSize;
+        // 创建文件，这里文件的大小还是0
         this.file = new File(fileName);
         // 文件名为0000000....[offset]，转成Long，就取出第一个offset了
         this.fileFromOffset = Long.parseLong(this.file.getName());
@@ -177,7 +178,8 @@ public class MappedFile extends ReferenceResource {
         try {
             // 可读可写模式
             this.fileChannel = new RandomAccessFile(this.file, "rw").getChannel();
-            /** 开启映射 */
+            /** 开启映射，这里会直接把文件的大小，变成 fileSize */
+            // 这里使用mmap技术，减少一次读数据的拷贝。
             this.mappedByteBuffer = this.fileChannel.map(MapMode.READ_WRITE, 0, fileSize);
             // 总映射大小
             TOTAL_MAPPED_VIRTUAL_MEMORY.addAndGet(fileSize);
@@ -233,7 +235,7 @@ public class MappedFile extends ReferenceResource {
             byteBuffer.position(currentPos);
             AppendMessageResult result;
             if (messageExt instanceof MessageExtBrokerInner) {
-                // 为啥通过回调，来追加？
+                // 为啥通过回调，来追加？因为 MappedFile 是共用的，MappedFile 不关心具体怎么 append。
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos, (MessageExtBrokerInner) messageExt);
             } else if (messageExt instanceof MessageExtBatch) {
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos, (MessageExtBatch) messageExt);
@@ -526,12 +528,15 @@ public class MappedFile extends ReferenceResource {
         this.committedPosition.set(pos);
     }
 
+    // todo：文件预热，提前写入一个0
+    // https://cloud.tencent.com/developer/article/1381040
     public void warmMappedFile(FlushDiskType type, int pages) {
         long beginTime = System.currentTimeMillis();
         ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
         int flush = 0;
         long time = System.currentTimeMillis();
         for (int i = 0, j = 0; i < this.fileSize; i += MappedFile.OS_PAGE_SIZE, j++) {
+            // pagecache每页是4k，这里为每页都写入一个0.
             byteBuffer.put(i, (byte) 0);
             // force flush when flush disk type is sync
             if (type == FlushDiskType.SYNC_FLUSH) {
@@ -589,11 +594,13 @@ public class MappedFile extends ReferenceResource {
         this.firstCreateInQueue = firstCreateInQueue;
     }
 
+    // todo：
     public void mlock() {
         final long beginTime = System.currentTimeMillis();
         final long address = ((DirectBuffer) (this.mappedByteBuffer)).address();
         Pointer pointer = new Pointer(address);
         {
+            // mlock 只有超级用户才有权限。
             int ret = LibC.INSTANCE.mlock(pointer, new NativeLong(this.fileSize));
             log.info("mlock {} {} {} ret = {} time consuming = {}", address, this.fileName, this.fileSize, ret, System.currentTimeMillis() - beginTime);
         }

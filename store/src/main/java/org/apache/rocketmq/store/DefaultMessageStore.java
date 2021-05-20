@@ -553,6 +553,7 @@ public class DefaultMessageStore implements MessageStore {
 
     @Override
     public boolean isOSPageCacheBusy() {
+        // putMessage的时候会上锁，上锁时间超过1s，会流控
         long begin = this.getCommitLog().getBeginTimeInLock();
         long diff = this.systemClock.now() - begin;
 
@@ -682,6 +683,7 @@ public class DefaultMessageStore implements MessageStore {
                                 }
                             }
 
+                            // 先根据tag的HashCode进行一次粗粒度的过滤，Consumer还需要进行一次过滤
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByConsumeQueue(isTagsCodeLegal ? tagsCode : null, extRet ? cqExtUnit : null)) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -1539,6 +1541,7 @@ public class DefaultMessageStore implements MessageStore {
         return runningFlags;
     }
 
+    // 调用方就看 DefaultMessageStore 即可，另外两个都是被废弃了的。
     public void doDispatch(DispatchRequest req) {
         for (CommitLogDispatcher dispatcher : this.dispatcherList) {
             dispatcher.dispatch(req);
@@ -1833,6 +1836,9 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * flush 到文件中，如果服务挂了应该没事，系统会把 pagecache 里的内容写到文件里
+     */
     class FlushConsumeQueueService extends ServiceThread {
         private static final int RETRY_TIMES_OVER = 3;
         private long lastFlushTimestamp = 0;
@@ -1906,6 +1912,11 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 异步将 commitlog 分发到 MessageQueue、Index 中
+     *
+     * 内部使用 reputFromOffset 字段记录 reput 的偏移量，当服务启动的时候，会从所有 topic、queue 中找出最大的物理偏移量，从这个点开始继续同步。
+     */
     class ReputMessageService extends ServiceThread {
 
         private volatile long reputFromOffset = 0;
@@ -1962,6 +1973,7 @@ public class DefaultMessageStore implements MessageStore {
                         this.reputFromOffset = result.getStartOffset();
 
                         for (int readSize = 0; readSize < result.getSize() && doNext; ) {
+                            // 从 buffer 中读出一条 commitlog 记录，然后进行分发
                             DispatchRequest dispatchRequest =
                                 DefaultMessageStore.this.commitLog.checkMessageAndReturnSize(result.getByteBuffer(), false, false);
                             int size = dispatchRequest.getBufferSize() == -1 ? dispatchRequest.getMsgSize() : dispatchRequest.getBufferSize();
@@ -1969,8 +1981,8 @@ public class DefaultMessageStore implements MessageStore {
                             if (dispatchRequest.isSuccess()) {
                                 if (size > 0) {
                                     /** 分发请求 */
-                                    // CommitLogDispatcherBuildConsumeQueue，构建ConsumeQueue
-                                    // CommitLogDispatcherBuildIndex，构建索引
+                                    // 1、CommitLogDispatcherBuildConsumeQueue，构建ConsumeQueue
+                                    // 2、CommitLogDispatcherBuildIndex，构建查询索引
                                     DefaultMessageStore.this.doDispatch(dispatchRequest);
 
                                     if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
@@ -1981,7 +1993,9 @@ public class DefaultMessageStore implements MessageStore {
                                             dispatchRequest.getBitMap(), dispatchRequest.getPropertiesMap());
                                     }
 
+                                    /** 下一个要 reput 的物理偏移量 */
                                     this.reputFromOffset += size;
+                                    // 用于跳出循环
                                     readSize += size;
                                     if (DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole() == BrokerRole.SLAVE) {
                                         DefaultMessageStore.this.storeStatsService
@@ -1991,6 +2005,7 @@ public class DefaultMessageStore implements MessageStore {
                                             .addAndGet(dispatchRequest.getMsgSize());
                                     }
                                 } else if (size == 0) {
+                                    // 当前处理的commitlog文件已经读完了，滚动到下一个
                                     this.reputFromOffset = DefaultMessageStore.this.commitLog.rollNextFile(this.reputFromOffset);
                                     readSize = result.getSize();
                                 }

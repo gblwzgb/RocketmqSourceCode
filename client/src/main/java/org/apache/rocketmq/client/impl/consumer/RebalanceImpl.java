@@ -228,6 +228,7 @@ public abstract class RebalanceImpl {
             }
         }
 
+        // rebalance后，清除不属于我的 topic（话说rebalance为什么topic会变，不是应该只变具体队列吗?）
         this.truncateMessageQueueNotMyTopic();
     }
 

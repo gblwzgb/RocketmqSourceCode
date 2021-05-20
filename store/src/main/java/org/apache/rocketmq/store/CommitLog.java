@@ -163,6 +163,7 @@ public class CommitLog {
         int mappedFileSize = this.defaultMessageStore.getMessageStoreConfig().getMappedFileSizeCommitLog();
         MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset, returnFirstOnNotFound);
         if (mappedFile != null) {
+            // %是求余数，去掉能整除的1G，那么剩下的就是在当前commitlog文件内的偏移量啦。
             int pos = (int) (offset % mappedFileSize);
             SelectMappedBufferResult result = mappedFile.selectMappedBuffer(pos);
             return result;
@@ -565,6 +566,7 @@ public class CommitLog {
         return beginTimeInLock;
     }
 
+    // 类名是异步，其实只有最后的刷盘请求、复制请求是异步的。
     public CompletableFuture<PutMessageResult> asyncPutMessage(final MessageExtBrokerInner msg) {
         // Set the storage time
         // 设置存储的时间戳
@@ -629,7 +631,7 @@ public class CommitLog {
                 return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.CREATE_MAPEDFILE_FAILED, null));
             }
 
-            // 附加一个消息
+            // 同步附加一个消息
             result = mappedFile.appendMessage(msg, this.appendMessageCallback);
             switch (result.getStatus()) {
                 case PUT_OK:
@@ -929,7 +931,7 @@ public class CommitLog {
         if (FlushDiskType.SYNC_FLUSH == this.defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {
             final GroupCommitService service = (GroupCommitService) this.flushCommitLogService;
             if (messageExt.isWaitStoreMsgOK()) {  // 默认true
-                // 创建同步刷盘的请求，结果是通过future来异步转同步。。。
+                // 创建同步刷盘的请求，结果是通过future来异步转同步。。。这里由一个异步线程专门负责flush，否则多个线程同时去flush，并发怎么控制？
                 GroupCommitRequest request = new GroupCommitRequest(result.getWroteOffset() + result.getWroteBytes(),
                         this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout());
                 // 提交flush请求
@@ -1673,12 +1675,13 @@ public class CommitLog {
                 // 默认最大4M，超过则返回失败
                 CommitLog.log.warn("message size exceeded, msg total size: " + msgLen + ", msg body size: " + bodyLength
                     + ", maxMessageSize: " + this.maxMessageSize);
+                // 返回 MESSAGE_SIZE_EXCEEDED 的失败
                 return new AppendMessageResult(AppendMessageStatus.MESSAGE_SIZE_EXCEEDED);
             }
 
             // Determines whether there is sufficient free space  （译：确定是否有足够的可用空间）
             if ((msgLen + END_FILE_MIN_BLANK_LENGTH) > maxBlank) {
-                // todo ： 空间不够了
+                // todo ： 空间不够了，留白
                 this.resetByteBuffer(this.msgStoreItemMemory, maxBlank);
                 // 1 TOTALSIZE
                 this.msgStoreItemMemory.putInt(maxBlank);

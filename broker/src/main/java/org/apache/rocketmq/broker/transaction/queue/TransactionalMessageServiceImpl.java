@@ -166,14 +166,17 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                 long i = halfOffset;
                 while (true) {
                     if (System.currentTimeMillis() - startTime > MAX_PROCESS_TIME_LIMIT) {
+                        // 最多处理60s，超出时间break。
                         log.info("Queue={} process time reach max={}", messageQueue, MAX_PROCESS_TIME_LIMIT);
                         break;
                     }
                     if (removeMap.containsKey(i)) {
+                        // 已经被标记为删除了，跳过处理
                         log.info("Half offset {} has been committed/rolled back", i);
                         Long removedOpOffset = removeMap.remove(i);
                         doneOpOffset.add(removedOpOffset);
                     } else {
+                        // 获取半消息
                         GetResult getResult = getHalfMsg(messageQueue, i);
                         MessageExt msgExt = getResult.getMsg();
                         if (msgExt == null) {
@@ -194,7 +197,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                         }
 
                         if (needDiscard(msgExt, transactionCheckMax) || needSkip(msgExt)) {
-                            // 丢到topic：TRANS_CHECK_MAX_TIME_TOPIC中
+                            // 丢到topic：TRANS_CHECK_MAX_TIME_TOPIC中，然后消费位点+1，continue继续执行下一条，这条消息就被跳过了。
                             listener.resolveDiscardMsg(msgExt);
                             newOffset = i + 1;
                             i++;
@@ -231,6 +234,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                             || (valueOfCurrentMinusBorn <= -1);
 
                         if (isNeedCheck) {
+                            // 再put一条新的半消息。这样老的那条半消息直接当消息完成了，妙啊。
                             if (!putBackHalfMsgQueue(msgExt, i)) {
                                 continue;
                             }
@@ -247,10 +251,12 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                     i++;
                 }
                 if (newOffset != halfOffset) {
+                    // commit上报半消息的消费位点
                     transactionalMessageBridge.updateConsumeOffset(messageQueue, newOffset);
                 }
                 long newOpOffset = calculateOpOffset(doneOpOffset, opOffset);
                 if (newOpOffset != opOffset) {
+                    // commit上报op消息的消费位点
                     transactionalMessageBridge.updateConsumeOffset(opQueue, newOpOffset);
                 }
             }
